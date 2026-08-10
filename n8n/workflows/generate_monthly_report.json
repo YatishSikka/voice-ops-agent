@@ -1,0 +1,93 @@
+{
+  "active": true,
+  "connections": {
+    "Wait": {
+      "main": [
+        [
+          {
+            "index": 0,
+            "node": "Callback",
+            "type": "main"
+          }
+        ]
+      ]
+    },
+    "Webhook": {
+      "main": [
+        [
+          {
+            "index": 0,
+            "node": "Wait",
+            "type": "main"
+          }
+        ]
+      ]
+    }
+  },
+  "description": "Generate the monthly usage report. Takes several minutes.",
+  "id": "ulvs3E8uQ7X5wPjv",
+  "isArchived": false,
+  "meta": null,
+  "name": "Generate Monthly Report",
+  "nodeGroups": [],
+  "nodes": [
+    {
+      "id": "cccccccc-1111-4111-8111-111111111111",
+      "name": "Webhook",
+      "notes": "{\n  \"description\": \"Generate the monthly usage report. Takes several minutes.\",\n  \"async\": true,\n  \"parameters\": {\n    \"type\": \"object\",\n    \"properties\": {\n      \"month\": {\n        \"type\": \"string\",\n        \"description\": \"Month, e.g. 'July'\"\n      }\n    },\n    \"required\": [\n      \"month\"\n    ]\n  }\n}",
+      "parameters": {
+        "httpMethod": "POST",
+        "options": {},
+        "path": "monthly-report",
+        "responseMode": "onReceived"
+      },
+      "position": [
+        0,
+        0
+      ],
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "webhookId": "7c32839f-bde6-4e6d-b926-46e67cc23c88"
+    },
+    {
+      "id": "cccccccc-2222-4222-8222-222222222222",
+      "name": "Wait",
+      "parameters": {
+        "amount": 5,
+        "unit": "seconds"
+      },
+      "position": [
+        220,
+        0
+      ],
+      "type": "n8n-nodes-base.wait",
+      "typeVersion": 1.1,
+      "webhookId": "dddddddd-2222-4222-8222-222222222222"
+    },
+    {
+      "id": "cccccccc-3333-4333-8333-333333333333",
+      "name": "Callback",
+      "parameters": {
+        "jsonBody": "={{ JSON.stringify({ result: { message: \"Monthly report for \" + $('Webhook').item.json.body.month + \" is ready: 1,284 events across 37 workflows.\" } }) }}",
+        "method": "POST",
+        "options": {},
+        "sendBody": true,
+        "specifyBody": "json",
+        "url": "={{ $('Webhook').item.json.body.__callback_url }}"
+      },
+      "position": [
+        440,
+        0
+      ],
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2
+    }
+  ],
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "sourceWorkflowId": null,
+  "tags": [
+    "agent-tool"
+  ]
+}

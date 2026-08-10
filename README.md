@@ -163,6 +163,42 @@ All configuration is environment variables, read once in `config.py`. See
   change.
 - `LLM_PROVIDER` — `groq` (default) or `claude`. STT and TTS stay on Groq either
   way.
+- `PUBLIC_BASE_URL` — where n8n POSTs when a background workflow finishes. Note
+  it defaults to `http://127.0.0.1:7860`, not `localhost`: n8n is Node, Node
+  resolves `localhost` to IPv6 `::1` first, and a server bound to IPv4 only
+  refuses that connection. That mistake costs you a silent `ECONNREFUSED`
+  visible nowhere except n8n's execution history.
+
+### Declaring a tool
+
+A workflow describes itself with fields the n8n editor already has:
+
+| Where | What |
+|---|---|
+| Workflow name | the tool name, slugified (`Get Calendar Events` → `get_calendar_events`) |
+| Workflow description | the prose the model reads to decide if the tool applies |
+| Webhook node → Notes | a JSON Schema for the arguments |
+
+Notes accepts a bare JSON Schema, or an envelope carrying more:
+
+```json
+{
+  "description": "Generate the monthly usage report.",
+  "async": true,
+  "parameters": {
+    "type": "object",
+    "properties": {"month": {"type": "string"}},
+    "required": ["month"]
+  }
+}
+```
+
+`"async": true` marks work too slow to keep a conversation waiting. The agent
+fires it with a task id and a callback URL, tells the user it will report back,
+and ends the turn; when n8n calls back, the result arrives over Telegram. The
+workflow must also be **tagged** `agent-tool` and **active** — an inactive
+workflow's production webhook 404s, so the registry skips it rather than offer
+the model a tool that cannot work.
 
 ## Roadmap
 
@@ -171,7 +207,7 @@ All configuration is environment variables, read once in `config.py`. See
 | 0 | Preflight gate checks | **Done** — all gates green |
 | 1 | Voice loop: mic → STT → TTS | **Works locally**; hosting pending |
 | 2 | **Tool registry** — n8n workflows as runtime-discovered tools | **Works locally** — end to end, voice to n8n and back |
-| 3 | Async callback — long jobs return via Telegram voice note | Pending |
+| 3 | Async callback — long jobs return via Telegram voice note | **Works locally** — awaiting a Telegram token to verify delivery |
 | 4 | ~8 workflows, rate-limit queue, confirmation gate on destructive tools | Pending |
 | 5 | Eval harness, Langfuse tracing, CI, measured latency table | Pending |
 

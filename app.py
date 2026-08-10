@@ -16,12 +16,15 @@ import logging
 import os
 
 import gradio as gr
+from fastapi import FastAPI, Request
 
 from agent.loop import AgentLoop
 from agent.stt import GroqSTT, STTError
 from agent.timing import Trace
 from agent.tts import ResilientTTS, build_tts
 from config import config
+from tasks.callbacks import TelegramNotifier, format_completion
+from tasks.store import store
 
 logging.basicConfig(level=logging.INFO, format="%(levelname)s %(name)s: %(message)s")
 log = logging.getLogger("app")
@@ -37,6 +40,14 @@ LATENCY_TARGET_MS = 2500
 _stt: GroqSTT | None = None
 _tts: ResilientTTS | None = None
 _agent: AgentLoop | None = None
+_notifier: TelegramNotifier | None = None
+
+
+def notifier() -> TelegramNotifier:
+    global _notifier
+    if _notifier is None:
+        _notifier = TelegramNotifier()
+    return _notifier
 
 
 def engines() -> tuple[GroqSTT, ResilientTTS, AgentLoop]:
@@ -215,10 +226,61 @@ def build_ui() -> gr.Blocks:
 
 demo = build_ui()
 
+# n8n calls this when a background workflow finishes. It is mounted alongside
+# Gradio rather than run as a second service, so there is one process, one
+# port, and one URL to expose.
+api = FastAPI(title="Voice-Ops Agent")
+
+
+@api.post("/tasks/{task_id}/complete")
+async def complete_task(task_id: str, request: Request) -> dict[str, object]:
+    """Receive a finished task and notify over Telegram.
+
+    Always answers 200 once the task is known. n8n retries non-2xx responses,
+    and a retry here would mean a second notification for work that already
+    succeeded -- so duplicates are absorbed rather than argued with.
+    """
+    try:
+        body = await request.json()
+    except Exception:  # noqa: BLE001 -- a workflow may post nothing at all
+        body = {}
+
+    error = body.get("error") if isinstance(body, dict) else None
+    result = body.get("result", body) if isinstance(body, dict) else body
+
+    task, first = store.complete(task_id, result=result, error=error)
+    if task is None:
+        # Unknown id: most likely this process restarted. Say so rather than
+        # 404, so n8n stops retrying something no one can act on.
+        log.warning("Callback for unknown task %s", task_id)
+        return {"ok": False, "reason": "unknown task id"}
+
+    if not first:
+        log.info("Duplicate callback for task %s ignored", task_id)
+        return {"ok": True, "duplicate": True}
+
+    message = format_completion(task.tool, task.result, task.error, task.duration_s)
+    delivery = notifier().notify(message)
+    store.mark_notified(task_id)
+    log.info("Task %s delivered: text=%s audio=%s", task_id, delivery.text_sent, delivery.audio_method)
+
+    return {"ok": True, "notified": delivery.text_sent, "audio": delivery.audio_method}
+
+
+@api.get("/healthz")
+async def healthz() -> dict[str, object]:
+    return {"ok": True, "pending_tasks": len(store.pending())}
+
+
+api = gr.mount_gradio_app(api, demo, path="/")
+
 if __name__ == "__main__":
+    import uvicorn
+
     # PaaS hosts assign a port and expect the app on 0.0.0.0; locally this is
     # the usual http://127.0.0.1:7860.
-    demo.launch(
-        server_name="0.0.0.0" if os.environ.get("PORT") else "127.0.0.1",
-        server_port=int(os.environ.get("PORT", 7860)),
+    uvicorn.run(
+        api,
+        host="0.0.0.0" if os.environ.get("PORT") else "127.0.0.1",
+        port=int(os.environ.get("PORT", 7860)),
     )

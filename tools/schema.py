@@ -31,7 +31,7 @@ from __future__ import annotations
 import json
 import logging
 import re
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import Any
 
 from agent.providers import ToolSpec
@@ -60,6 +60,16 @@ class ToolBinding:
     workflow_name: str
     webhook_path: str
     http_method: str = "POST"
+    is_async: bool = False
+
+
+@dataclass(frozen=True)
+class NotesSpec:
+    """What a webhook node's Notes field declares."""
+
+    description: str = ""
+    schema: dict[str, Any] = field(default_factory=dict)
+    is_async: bool = False
 
 
 def slugify(name: str) -> str:
@@ -76,15 +86,15 @@ def slugify(name: str) -> str:
     return slug[:NAME_MAX]
 
 
-def parse_notes(notes: str) -> tuple[str, dict[str, Any]]:
-    """Pull (description, JSON Schema) out of a webhook node's Notes field.
+def parse_notes(notes: str) -> NotesSpec:
+    """Read a webhook node's Notes field.
 
     Tolerates a ```json fenced block, since that is how people paste JSON into
     a notes box.
     """
     text = (notes or "").strip()
     if not text:
-        return "", {}
+        return NotesSpec()
 
     fenced = _FENCE.search(text)
     if fenced:
@@ -98,16 +108,21 @@ def parse_notes(notes: str) -> tuple[str, dict[str, Any]]:
     if not isinstance(parsed, dict):
         raise SchemaError(f"notes must be a JSON object, got {type(parsed).__name__}")
 
+    description = str(parsed.get("description", "")).strip()
+    # "async": true means the workflow takes long enough that the conversation
+    # should not wait for it -- fire it and notify on completion instead.
+    is_async = bool(parsed.get("async", False))
+
     # Envelope form: {"description": ..., "parameters": {...}}
     if "parameters" in parsed:
         schema = parsed["parameters"]
         if not isinstance(schema, dict):
             raise SchemaError("'parameters' must be an object")
-        return str(parsed.get("description", "")).strip(), _normalise(schema)
+        return NotesSpec(description, _normalise(schema), is_async)
 
     # Bare-schema form.
     if "properties" in parsed or parsed.get("type") == "object":
-        return str(parsed.get("description", "")).strip(), _normalise(parsed)
+        return NotesSpec(description, _normalise(parsed), is_async)
 
     raise SchemaError(
         "notes JSON has neither 'parameters' nor 'properties' -- "
@@ -151,11 +166,12 @@ def build_binding(workflow: Workflow) -> ToolBinding:
     if node is None:
         raise SchemaError("no webhook trigger node")
 
-    notes_description, schema = parse_notes(node.get("notes", ""))
+    notes = parse_notes(node.get("notes", ""))
+    schema = notes.schema
 
     # Workflow description wins: it is the more discoverable field, and the one
     # a person editing in the UI is most likely to keep current.
-    description = workflow.description or notes_description
+    description = workflow.description or notes.description
     if not description:
         raise SchemaError(
             "no description -- set the workflow description, or a 'description' "
@@ -169,10 +185,19 @@ def build_binding(workflow: Workflow) -> ToolBinding:
 
     method = str((node.get("parameters") or {}).get("httpMethod") or "POST").upper()
 
+    if notes.is_async:
+        # Tell the model what it is choosing: the result arrives later, by
+        # message, and it should say so rather than pretend to have an answer.
+        description = (
+            f"{description} This runs in the background and can take a while; "
+            "the result is sent to the user by message when it finishes."
+        )
+
     return ToolBinding(
         spec=ToolSpec(name=slugify(workflow.name), description=description, parameters=schema),
         workflow_id=workflow.id,
         workflow_name=workflow.name,
         webhook_path=webhook_path(node),
         http_method=method,
+        is_async=notes.is_async,
     )

@@ -18,6 +18,7 @@ from typing import Any
 
 from agent.providers import ToolSpec
 from config import config
+from tasks.store import store
 from tools.n8n_client import N8nClient, N8nError, Workflow
 from tools.schema import SchemaError, ToolBinding, build_binding
 
@@ -157,6 +158,9 @@ class ToolRegistry:
         if "__parse_error__" in arguments:
             return {"error": arguments["__parse_error__"]}
 
+        if binding.is_async:
+            return self._dispatch_async(binding, name, arguments)
+
         try:
             return self.client.call_webhook(
                 binding.webhook_path, arguments, method=binding.http_method
@@ -164,3 +168,43 @@ class ToolRegistry:
         except N8nError as exc:
             log.warning("Tool %r failed: %s", name, exc)
             return {"error": f"{name} failed: {exc}"}
+
+    def _dispatch_async(
+        self, binding: ToolBinding, name: str, arguments: dict[str, Any]
+    ) -> dict[str, Any]:
+        """Start a long-running workflow and return without waiting.
+
+        The workflow is handed a task id and a URL to call when it finishes.
+        The conversation ends here; delivery happens over Telegram.
+        """
+        task = store.create(name, arguments)
+        callback_url = (
+            f"{config.public_base_url}/tasks/{task.id}/complete"
+            if config.public_base_url
+            else None
+        )
+        if callback_url is None:
+            log.warning(
+                "PUBLIC_BASE_URL is unset; %r will run but its result cannot be "
+                "delivered back to this process", name
+            )
+
+        payload = {**arguments, "__task_id": task.id, "__callback_url": callback_url}
+        try:
+            self.client.call_webhook(binding.webhook_path, payload, method=binding.http_method)
+        except N8nError as exc:
+            # Failing to *start* is worth telling the model about now, unlike
+            # failing to finish, which arrives by message later.
+            store.complete(task.id, error=str(exc))
+            log.warning("Async tool %r failed to start: %s", name, exc)
+            return {"error": f"{name} could not be started: {exc}"}
+
+        log.info("Started async task %s for %r", task.id, name)
+        return {
+            "status": "started",
+            "task_id": task.id,
+            "message": (
+                "The job is running in the background. Tell the user you will "
+                "message them when it is done, and do not wait for a result."
+            ),
+        }

@@ -44,6 +44,15 @@ class Config:
     telegram_bot_token: str | None
     telegram_chat_id: str | None
 
+    # Where n8n should POST when a long-running workflow finishes. Must be
+    # reachable from n8n, so a loopback address only works when both run on
+    # this machine.
+    #
+    # 127.0.0.1 rather than localhost, deliberately: Node resolves "localhost"
+    # to IPv6 ::1 first, and a server bound to IPv4 only will refuse that
+    # connection. n8n is Node, so "localhost" here means ECONNREFUSED.
+    public_base_url: str | None
+
     hf_token: str | None
 
     registry_cache_ttl: int
@@ -70,6 +79,8 @@ class Config:
             n8n_tool_tag=_env("N8N_TOOL_TAG", "agent-tool"),
             telegram_bot_token=_env("TELEGRAM_BOT_TOKEN"),
             telegram_chat_id=_env("TELEGRAM_CHAT_ID"),
+            public_base_url=(_env("PUBLIC_BASE_URL", "http://127.0.0.1:7860") or "").rstrip("/")
+            or None,
             hf_token=_env("HF_TOKEN"),
             registry_cache_ttl=int(_env("REGISTRY_CACHE_TTL", "60")),
             max_tool_iterations=int(_env("MAX_TOOL_ITERATIONS", "6")),

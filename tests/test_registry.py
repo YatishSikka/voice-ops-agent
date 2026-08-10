@@ -150,7 +150,11 @@ def test_slugify_rejects_a_name_with_nothing_usable():
 
 
 def test_parse_notes_on_empty_input():
-    assert parse_notes("   ") == ("", {})
+    notes = parse_notes("   ")
+
+    assert notes.description == ""
+    assert notes.schema == {}
+    assert notes.is_async is False
 
 
 # -- registry behaviour -----------------------------------------------------
