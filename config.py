@@ -59,8 +59,10 @@ class Config:
             anthropic_model=_env("ANTHROPIC_MODEL", "claude-sonnet-5"),
             stt_model=_env("STT_MODEL", "whisper-large-v3-turbo"),
             llm_model=_env("LLM_MODEL", "llama-3.3-70b-versatile"),
-            tts_model=_env("TTS_MODEL", "playai-tts"),
-            tts_voice=_env("TTS_VOICE", "Fritz-PlayAI"),
+            # playai-tts was decommissioned; Orpheus is the current Groq TTS and
+            # needs one-time terms acceptance in the console before it answers.
+            tts_model=_env("TTS_MODEL", "canopylabs/orpheus-v1-english"),
+            tts_voice=_env("TTS_VOICE", "tara"),
             # rstrip("/") so callers can always join with a leading-slash path
             n8n_base_url=(_env("N8N_BASE_URL") or "").rstrip("/") or None,
             n8n_api_key=_env("N8N_API_KEY"),
