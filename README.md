@@ -11,10 +11,11 @@ The second idea is that slow work does not have to block the conversation. The
 agent hands a long-running job to n8n, ends the turn, and messages you on
 Telegram when it finishes — including as a voice note.
 
-> **Status: early.** Phase 0 (preflight) and the Phase 1 service layer are built
-> and unit-tested. The Gradio voice loop is not wired yet, and nothing has run
-> against a live API. Sections marked _pending_ below will carry measured
-> numbers, not estimates — see [Honest limitations](#honest-limitations).
+> **Status: early.** Phase 0 is closed — all three preflight gates pass against
+> live services. Phase 1 runs locally: speak into the browser and the agent
+> transcribes and speaks back, with per-hop timings on screen. Not yet built:
+> the tool registry (Phase 2), which is the reason the project exists, and
+> deployment to a Space.
 
 ---
 
@@ -166,8 +167,8 @@ All configuration is environment variables, read once in `config.py`. See
 
 | Phase | Deliverable | Status |
 |---|---|---|
-| 0 | Preflight gate checks | **Done** |
-| 1 | Voice loop: mic → STT → echo → TTS, deployed | Service layer done; Gradio app pending |
+| 0 | Preflight gate checks | **Done** — all gates green |
+| 1 | Voice loop: mic → STT → echo → TTS, deployed | **Works locally**; Space deployment pending |
 | 2 | **Tool registry** — n8n workflows as runtime-discovered tools | Pending |
 | 3 | Async callback — long jobs return via Telegram voice note | Pending |
 | 4 | ~8 workflows, rate-limit queue, confirmation gate on destructive tools | Pending |
@@ -178,10 +179,12 @@ The tool list freezes at the end of Phase 4. That is the scope-creep guard.
 ## Honest limitations
 
 - **Latency target is ~1.5s voice-to-voice, not the ~900ms of a telephony
-  agent.** Browser capture plus HTTP round-trip STT costs the difference. The
-  measured p50/p95 per hop will be published here once the eval harness runs;
-  until then this section carries no numbers, because estimates in a README are
-  just guesses with formatting.
+  agent.** Browser capture plus HTTP round-trip STT costs the difference. Early
+  single-turn measurements on the echo loop land at **STT 320–920 ms, TTS
+  ~800 ms, ~1.1–1.2 s end to end** — but these are individual runs on one
+  fixture, not a distribution, and they predate the LLM hop that Phase 2 adds.
+  The p50/p95 table here stays empty until the eval harness produces one,
+  because estimates in a README are guesses with formatting.
 - **Free-tier ceilings are real.** Groq's ~30 RPM is comfortable for one
   speaker and not for a demo audience. Evals run serially for this reason.
 - **The Space sleeps when idle**, so the first request after a quiet period pays
