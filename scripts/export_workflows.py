@@ -18,9 +18,9 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT))
 
-from config import config  # noqa: E402
-from tools.n8n_client import N8nClient  # noqa: E402
-from tools.schema import slugify  # noqa: E402
+from config import config
+from tools.n8n_client import N8nClient
+from tools.schema import slugify
 
 OUT_DIR = ROOT / "n8n" / "workflows"
 

@@ -213,6 +213,45 @@ the model a tool that cannot work.
 
 The tool list freezes at the end of Phase 4. That is the scope-creep guard.
 
+## Eval scorecard
+
+14 scenarios, run serially against live Groq and n8n
+(`python evals/run_evals.py --audio`):
+
+| Metric | Result |
+|---|---|
+| Task success | **14/14** |
+| Tool selection | **14/14** |
+| Restraint — no tool when none is needed | **6/6** |
+| Word error rate | **0%** over 4 spoken fixtures |
+
+| Hop | p50 | p95 |
+|---|---|---|
+| LLM | 584 ms | 763 ms |
+| Tool (n8n webhook) | 30 ms | 46 ms |
+| **Agent turn** | **584 ms** | **807 ms** |
+
+Add measured STT (~840 ms) and TTS (~700 ms) for the voice-to-voice figure of
+roughly 2.1 s.
+
+Restraint is scored deliberately: a third of the suite expects **no** tool call,
+because an agent that reaches for a tool on "thanks, that's all" is as broken as
+one that misses a real request.
+
+Two defects came out of the first run, both invisible to unit tests:
+
+- **`tool_use_failed`** — Llama on Groq intermittently emits a tool call in
+  Llama's text format (`<function=name{...}</function>`) rather than structured
+  JSON, and Groq rejects it with a 400. A 400 is otherwise never retried, so the
+  turn silently lost its tool call. Resampling that specific error fixed 2 of
+  the 14 scenarios and took tool selection from 86% to 100%.
+- **An over-broad system prompt** — "if you lack a tool, say so" was meant for
+  actions, but the model applied it to knowledge and refused to name the capital
+  of France. The prompt now separates *doing* from *answering*.
+
+The suite paces itself at 2.5 s per turn to stay inside Groq's ~30 RPM, so a
+full run costs about a minute.
+
 ## Honest limitations
 
 - **Latency is ~2.1s voice-to-voice, against an original target of 1.5s.** The

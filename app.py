@@ -282,5 +282,5 @@ if __name__ == "__main__":
     uvicorn.run(
         api,
         host="0.0.0.0" if os.environ.get("PORT") else "127.0.0.1",
-        port=int(os.environ.get("PORT", 7860)),
+        port=int(os.environ.get("PORT", "7860")),
     )

@@ -30,9 +30,8 @@ def test_nested_spans_are_not_double_counted():
 
 def test_span_is_recorded_even_when_the_block_raises():
     trace = Trace()
-    with pytest.raises(ValueError):
-        with trace.span("llm"):
-            raise ValueError("kaboom")
+    with pytest.raises(ValueError), trace.span("llm"):
+        raise ValueError("kaboom")
 
     assert len(trace.spans) == 1
     assert "kaboom" in trace.spans[0].error

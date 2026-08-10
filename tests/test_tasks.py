@@ -11,7 +11,6 @@ import pytest
 from tasks.callbacks import Delivery, TelegramNotifier, format_completion
 from tasks.store import TaskStore
 
-
 # -- store ------------------------------------------------------------------
 
 

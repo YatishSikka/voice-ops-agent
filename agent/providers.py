@@ -26,9 +26,11 @@ because Anthropic takes `system` as a top-level request field.
 from __future__ import annotations
 
 import json
+import logging
 from abc import ABC, abstractmethod
+from collections.abc import Sequence
 from dataclasses import dataclass, field
-from typing import Any, Sequence
+from typing import Any
 
 import httpx
 
@@ -37,7 +39,17 @@ from config import config
 from ._transport import TransportError, request_with_retry
 from .timing import Trace
 
+log = logging.getLogger(__name__)
+
 REQUEST_TIMEOUT = httpx.Timeout(60.0, connect=10.0)
+
+# Llama models on Groq intermittently emit a tool call in Llama's *text*
+# format -- <function=name{"arg": 1}</function> -- instead of structured JSON.
+# Groq rejects that with a 400 carrying code "tool_use_failed". It is a
+# sampling failure rather than a bad request, so the same prompt usually
+# succeeds on a retry, and a 400 is otherwise never retried.
+TOOL_FORMAT_RETRIES = 2
+TOOL_USE_FAILED = "tool_use_failed"
 
 
 class LLMError(TransportError):
@@ -183,11 +195,26 @@ class GroqProvider(LLMProvider):
 
         if trace is not None:
             with trace.span("llm", provider=self.name, model=self.model):
-                data = self._post(self._url, self._headers, payload)
+                data = self._post_tolerating_bad_tool_format(payload)
         else:
-            data = self._post(self._url, self._headers, payload)
+            data = self._post_tolerating_bad_tool_format(payload)
 
         return self._to_completion(data)
+
+    def _post_tolerating_bad_tool_format(self, payload: dict[str, Any]) -> dict[str, Any]:
+        """Retry the malformed-tool-call 400, which resampling usually fixes."""
+        for attempt in range(TOOL_FORMAT_RETRIES + 1):
+            try:
+                return self._post(self._url, self._headers, payload)
+            except LLMError as exc:
+                retryable = exc.status_code == 400 and TOOL_USE_FAILED in str(exc)
+                if not retryable or attempt == TOOL_FORMAT_RETRIES:
+                    raise
+                log.warning(
+                    "Model emitted a malformed tool call (attempt %d/%d); resampling",
+                    attempt + 1, TOOL_FORMAT_RETRIES,
+                )
+        raise LLMError(f"{self.name}: exhausted tool-format retries")  # unreachable
 
     def _to_completion(self, data: dict[str, Any]) -> Completion:
         choice = (data.get("choices") or [{}])[0]

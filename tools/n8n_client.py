@@ -44,7 +44,7 @@ class Workflow:
     tags: list[str] = field(default_factory=list)
 
     @classmethod
-    def from_api(cls, payload: dict[str, Any]) -> "Workflow":
+    def from_api(cls, payload: dict[str, Any]) -> Workflow:
         return cls(
             id=str(payload.get("id", "")),
             name=payload.get("name") or "",

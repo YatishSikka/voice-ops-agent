@@ -132,3 +132,52 @@ def test_malformed_tool_arguments_come_back_as_data_not_an_exception():
 def test_non_object_arguments_are_wrapped():
     assert _parse_arguments("42", "f") == {"value": 42}
     assert _parse_arguments("", "f") == {}
+
+
+def test_malformed_tool_call_400_is_resampled(monkeypatch):
+    """Groq's tool_use_failed is a sampling failure, not a bad request.
+
+    Llama sometimes emits <function=name{...}</function> as text instead of a
+    structured call. A 400 is otherwise never retried, so this one is special
+    cased -- without it, roughly one turn in seven lost its tool call.
+    """
+    from agent.providers import LLMError
+
+    attempts = []
+
+    def flaky(url, headers, payload):
+        attempts.append(1)
+        if len(attempts) < 3:
+            raise LLMError(
+                'groq: HTTP 400 -- {"error":{"code":"tool_use_failed"}}', 400
+            )
+        return {"choices": [{"message": {"content": "ok"}, "finish_reason": "stop"}]}
+
+    provider = GroqProvider.__new__(GroqProvider)
+    provider.model = "m"
+    provider._url = "u"
+    provider._headers = {}
+    monkeypatch.setattr(provider, "_post", flaky)
+
+    assert provider.chat([{"role": "user", "content": "hi"}]).text == "ok"
+    assert len(attempts) == 3
+
+
+def test_other_400s_are_not_retried(monkeypatch):
+    from agent.providers import LLMError
+
+    attempts = []
+
+    def bad_request(url, headers, payload):
+        attempts.append(1)
+        raise LLMError("groq: HTTP 400 -- model not found", 400)
+
+    provider = GroqProvider.__new__(GroqProvider)
+    provider.model = "m"
+    provider._url = "u"
+    provider._headers = {}
+    monkeypatch.setattr(provider, "_post", bad_request)
+
+    with pytest.raises(LLMError):
+        provider.chat([{"role": "user", "content": "hi"}])
+    assert len(attempts) == 1

@@ -38,7 +38,7 @@ import httpx
 ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT))
 
-from config import config  # noqa: E402  (needs the sys.path line above)
+from config import config
 
 TIMEOUT = httpx.Timeout(30.0, connect=10.0)
 MIN_ACCOUNT_AGE_DAYS = 30

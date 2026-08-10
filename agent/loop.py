@@ -38,9 +38,12 @@ Your replies are spoken aloud, so:
 - Say numbers and dates the way a person would: "tomorrow at 2" not "14:00".
 
 You have tools backed by real automations. Use them when the user asks for
-something they cover, and do not invent results you did not get from a tool.
-If a tool fails, say briefly what went wrong. If you lack a tool for what was
-asked, say so plainly instead of pretending."""
+something they cover, and never invent results you did not get from a tool.
+If a tool fails, say briefly what went wrong.
+
+Distinguish actions from questions. If you are asked to *do* something you have
+no tool for, say plainly that you cannot. If you are asked a question you can
+simply answer, answer it -- having no tool is not a reason to refuse to think."""
 
 # Said aloud when the model will not stop calling tools.
 GIVE_UP_REPLY = "Sorry, I got stuck working on that. Could you try asking a different way?"

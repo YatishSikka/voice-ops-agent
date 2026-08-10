@@ -21,9 +21,9 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT))
 
-from huggingface_hub import HfApi  # noqa: E402
+from huggingface_hub import HfApi
 
-from config import config  # noqa: E402
+from config import config
 
 SPACE_SDK = "gradio"
 # Pin the SDK the app was developed against; Spaces will otherwise pick its own.

@@ -1,0 +1,94 @@
+# Eval scenarios.
+#
+# Each is one turn. `expect_tools` is the set the agent should call -- an empty
+# list means it should answer without touching a tool, which is as much a
+# failure mode as calling the wrong one. Over-eager tool use is the thing this
+# suite is really watching for.
+#
+# `must_mention` is checked case-insensitively against the reply; keep it to
+# facts the tool actually returns, not phrasing, or the suite fails whenever
+# the model rewords itself.
+#
+# Tools available in the reference set:
+#   get_calendar_events(day)      -- sync, returns fixture events
+#   generate_monthly_report(month) -- async, calls back later
+
+- id: calendar_tomorrow
+  say: what's on my calendar tomorrow
+  expect_tools: [get_calendar_events]
+  expect_args: {day: tomorrow}
+  must_mention: [standup]
+  audio: true
+
+- id: calendar_today
+  say: do I have anything today
+  expect_tools: [get_calendar_events]
+  expect_args: {day: today}
+  audio: true
+
+- id: calendar_phrasing_indirect
+  say: am I busy tomorrow afternoon
+  expect_tools: [get_calendar_events]
+
+- id: calendar_design_review
+  say: when is my design review
+  expect_tools: [get_calendar_events]
+  must_mention: ["2"]
+
+- id: report_async
+  say: generate the monthly report for July
+  expect_tools: [generate_monthly_report]
+  expect_args: {month: July}
+  must_mention: [message, "let you know", "notify", "when it", "get back"]
+  match: any
+  audio: true
+
+- id: report_async_phrasing
+  say: I need the usage report for June please
+  expect_tools: [generate_monthly_report]
+
+# --- should NOT reach for a tool ------------------------------------------
+
+- id: greeting
+  say: hello, who am I talking to
+  expect_tools: []
+  audio: true
+
+- id: capability_question
+  say: what can you help me with
+  expect_tools: []
+
+- id: thanks
+  say: thanks, that's all for now
+  expect_tools: []
+
+- id: general_knowledge
+  say: what is the capital of France
+  expect_tools: []
+  must_mention: [paris]
+
+# --- should decline rather than improvise ---------------------------------
+
+- id: unsupported_capability
+  say: book me a flight to Tokyo next Friday
+  expect_tools: []
+  must_mention: ["can't", "cannot", "don't have", "do not have", "unable", "no tool", "not able"]
+  match: any
+
+- id: unsupported_email
+  say: send an email to my manager saying I'll be late
+  expect_tools: []
+  must_mention: ["can't", "cannot", "don't have", "do not have", "unable", "no tool", "not able"]
+  match: any
+
+# --- voice-specific output constraints ------------------------------------
+
+- id: brevity
+  say: what's on my calendar tomorrow
+  expect_tools: [get_calendar_events]
+  max_reply_chars: 220
+
+- id: no_markdown
+  say: list everything on my calendar tomorrow
+  expect_tools: [get_calendar_events]
+  forbid_in_reply: ["*", "#", "```", "- ["]
