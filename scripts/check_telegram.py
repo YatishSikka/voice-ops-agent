@@ -21,8 +21,8 @@ import httpx
 ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT))
 
-from config import config  # noqa: E402
-from tasks.callbacks import TelegramNotifier  # noqa: E402
+from config import config
+from tasks.callbacks import TelegramNotifier
 
 TELEGRAM_API = "https://api.telegram.org"
 

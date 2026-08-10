@@ -180,8 +180,20 @@ def test_delivery_failure_never_raises():
     assert "ConnectError" in delivery.error or "no route" in delivery.error
 
 
-def test_an_unconfigured_notifier_says_so_instead_of_failing():
-    delivery = TelegramNotifier(token=None, chat_id=None).notify("done")
+def test_an_unconfigured_notifier_says_so_instead_of_failing(monkeypatch):
+    """None falls back to config, so the config itself must be empty here.
+
+    Without the patch this test passes only while .env has no Telegram
+    credentials -- and starts sending real messages the moment it does.
+    """
+    from types import SimpleNamespace
+
+    import tasks.callbacks as module
+
+    monkeypatch.setattr(
+        module, "config", SimpleNamespace(telegram_bot_token=None, telegram_chat_id=None)
+    )
+    delivery = TelegramNotifier().notify("done")
 
     assert delivery.ok is False
     assert "TELEGRAM" in delivery.error
