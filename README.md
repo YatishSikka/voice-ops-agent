@@ -85,7 +85,7 @@ The whole system runs at **$0**.
 | STT | Groq `whisper-large-v3-turbo` | 2,000 req/day, 28,800 audio-sec/day |
 | LLM | Groq `llama-3.3-70b-versatile` | ~30 RPM, 1,000 RPD, 12K TPM |
 | TTS | Groq TTS → browser `speechSynthesis` fallback | preview-gated |
-| Orchestration | n8n Cloud trial → self-hosted CE | 14 days → unlimited |
+| Orchestration | n8n community edition, self-hosted | unlimited |
 | Hosting | Hugging Face Space, Gradio on ZeroGPU | 2 Spaces, sleeps when idle |
 | Callback | Telegram Bot API | unlimited |
 | Tracing | Langfuse Cloud | 50K observations/mo |
@@ -103,6 +103,33 @@ pip install -r requirements.txt
 cp .env.example .env      # then fill it in
 python scripts/preflight.py
 ```
+
+### Running n8n
+
+n8n runs locally on SQLite — no Docker, ~400 MB:
+
+```bash
+npx n8n start             # http://localhost:5678
+```
+
+Create the owner account on first launch, then **Settings → n8n API → Create an
+API key** and put it in `.env` alongside `N8N_BASE_URL=http://localhost:5678`.
+That screen is only present on self-hosted instances.
+
+To confirm the public API is live before you have a key:
+
+```bash
+curl -i http://localhost:5678/api/v1/workflows
+# 401 "'X-N8N-API-KEY' header required"  -> API is enabled, good
+# 404                                     -> API is disabled (this is what Cloud's trial does)
+```
+
+Verified on n8n 2.33.7 with Node 24, despite n8n officially targeting Node
+20/22. A `Failed to refresh MCP registry` line on startup is harmless — it is
+n8n fetching its own public server catalogue, unrelated to this project.
+
+Deploying to a Space later means giving n8n a public address — a Cloudflare
+Tunnel is enough, and only `N8N_BASE_URL` changes.
 
 `preflight.py` is a gate, not a formality. Three things can invalidate the whole
 design, so it verifies all three and prints a pass/fail table:
@@ -163,8 +190,13 @@ The tool list freezes at the end of Phase 4. That is the scope-creep guard.
   in-memory by design.
 - **`ClaudeProvider` is written but unverified against the live API.** It is the
   swap path, not the shipping path.
-- **n8n Cloud's free tier no longer exists** — it is a 14-day trial. The
-  self-hosted migration is planned for before expiry, not after.
+- **n8n runs self-hosted, and not by preference.** n8n Cloud has no free tier
+  any more, and its 14-day trial [disables the public
+  API](https://docs.n8n.io/connect/n8n-api/) — the `Settings → n8n API` screen
+  is hidden and `/api/v1/*` is switched off server-side. Since runtime workflow
+  discovery *is* this project, Cloud is unusable below the paid Starter tier.
+  The community edition has the same API for free, so the agent talks to a
+  self-hosted instance. Preflight's gate 2 exists to catch precisely this.
 
 ## License
 
