@@ -1,0 +1,64 @@
+{
+  "active": true,
+  "connections": {
+    "Webhook": {
+      "main": [
+        [
+          {
+            "index": 0,
+            "node": "Events",
+            "type": "main"
+          }
+        ]
+      ]
+    }
+  },
+  "description": "Look up the calendar events scheduled for a given day.",
+  "id": "55qpNBPEpArC12WF",
+  "isArchived": false,
+  "meta": null,
+  "name": "Get Calendar Events",
+  "nodeGroups": [],
+  "nodes": [
+    {
+      "id": "aaaaaaaa-1111-4111-8111-111111111111",
+      "name": "Webhook",
+      "notes": "{\n  \"type\": \"object\",\n  \"properties\": {\n    \"day\": {\n      \"type\": \"string\",\n      \"description\": \"Which day to look up, e.g. 'today' or 'tomorrow'\"\n    }\n  },\n  \"required\": [\n    \"day\"\n  ]\n}",
+      "parameters": {
+        "httpMethod": "POST",
+        "options": {},
+        "path": "calendar-events",
+        "responseMode": "lastNode"
+      },
+      "position": [
+        0,
+        0
+      ],
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "webhookId": "e62eca5d-f4a1-4bce-969a-9ebeea7ac456"
+    },
+    {
+      "id": "bbbbbbbb-2222-4222-8222-222222222222",
+      "name": "Events",
+      "parameters": {
+        "jsonOutput": "={{ JSON.stringify({ day: $json.body.day, events: [\"09:00 standup\", \"14:00 design review\"] }) }}",
+        "mode": "raw",
+        "options": {}
+      },
+      "position": [
+        220,
+        0
+      ],
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4
+    }
+  ],
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "sourceWorkflowId": null,
+  "tags": [
+    "agent-tool"
+  ]
+}
