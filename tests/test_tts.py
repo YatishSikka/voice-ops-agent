@@ -69,3 +69,43 @@ def test_speech_writes_audio_for_gradio(tmp_path):
 
 def test_browser_fallback_has_no_file_to_play():
     assert BrowserTTS().synthesize("hi").to_file() is None
+
+
+def _wav(data_size: int, riff_size: int, payload: bytes = b"\x00" * 100) -> bytes:
+    """Minimal WAV: RIFF header, fmt chunk, then a data chunk."""
+    import struct
+
+    fmt = struct.pack("<4sIHHIIHH", b"fmt ", 16, 1, 1, 24000, 48000, 2, 16)
+    return (
+        b"RIFF" + struct.pack("<I", riff_size) + b"WAVE"
+        + fmt
+        + b"data" + struct.pack("<I", data_size) + payload
+    )
+
+
+def test_streaming_wav_placeholders_are_repaired():
+    """Groq streams WAV with 0xFFFFFFFF sizes; browsers then show Infinity."""
+    import struct
+
+    from agent.tts import WAV_PLACEHOLDER_SIZE, repair_streaming_wav
+
+    raw = _wav(WAV_PLACEHOLDER_SIZE, WAV_PLACEHOLDER_SIZE)
+    fixed = repair_streaming_wav(raw)
+
+    assert struct.unpack_from("<I", fixed, 4)[0] == len(raw) - 8
+    data_at = fixed.index(b"data")
+    assert struct.unpack_from("<I", fixed, data_at + 4)[0] == 100
+    assert len(fixed) == len(raw)  # audio itself untouched
+
+
+def test_valid_wav_is_left_alone():
+    from agent.tts import repair_streaming_wav
+
+    raw = _wav(data_size=100, riff_size=100 + 44 - 8)
+    assert repair_streaming_wav(raw) is raw
+
+
+def test_non_wav_bytes_pass_through():
+    from agent.tts import repair_streaming_wav
+
+    assert repair_streaming_wav(b"ID3\x04not a wav") == b"ID3\x04not a wav"

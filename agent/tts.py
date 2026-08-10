@@ -18,6 +18,7 @@ through the browser, and the caller still gets `engine` to display.
 from __future__ import annotations
 
 import logging
+import struct
 import tempfile
 import uuid
 from dataclasses import dataclass
@@ -36,6 +37,45 @@ REQUEST_TIMEOUT = httpx.Timeout(60.0, connect=10.0)
 
 # Statuses that will still be true on the next turn.
 PERMANENT_STATUS = (400, 401, 403, 404)
+
+# Streaming WAV writers cannot know the length up front, so they write this
+# placeholder into the size fields.
+WAV_PLACEHOLDER_SIZE = 0xFFFFFFFF
+
+
+def repair_streaming_wav(data: bytes) -> bytes:
+    """Patch real lengths into a streamed WAV header.
+
+    Groq returns WAV with 0xFFFFFFFF in both the RIFF size and the data chunk
+    size. Browsers then report an Infinity duration and render a scrubber that
+    cannot be dragged, and stricter decoders reject the file outright. The
+    audio itself is fine -- only the header lies -- so rewrite the two fields
+    from the bytes actually received.
+    """
+    if len(data) < 12 or data[0:4] != b"RIFF" or data[8:12] != b"WAVE":
+        return data
+
+    buffer = bytearray(data)
+    repaired = False
+
+    if struct.unpack_from("<I", buffer, 4)[0] == WAV_PLACEHOLDER_SIZE:
+        struct.pack_into("<I", buffer, 4, len(buffer) - 8)
+        repaired = True
+
+    offset = 12
+    while offset + 8 <= len(buffer):
+        chunk_id = bytes(buffer[offset : offset + 4])
+        size = struct.unpack_from("<I", buffer, offset + 4)[0]
+        if size == WAV_PLACEHOLDER_SIZE:
+            # Only the final data chunk can be repaired: an unsized chunk
+            # anywhere else leaves no way to find what follows it.
+            if chunk_id == b"data":
+                struct.pack_into("<I", buffer, offset + 4, len(buffer) - offset - 8)
+                repaired = True
+            break
+        offset += 8 + size + (size % 2)  # chunks are word-aligned
+
+    return bytes(buffer) if repaired else data
 
 
 class TTSError(TransportError):
@@ -133,13 +173,9 @@ class GroqTTS:
             response = self._post(body)
             latency = 0.0
 
-        return Speech(
-            text=text,
-            audio=response.content,
-            mime=response.headers.get("content-type", "audio/wav").split(";")[0],
-            engine=self.name,
-            latency_ms=latency,
-        )
+        mime = response.headers.get("content-type", "audio/wav").split(";")[0]
+        audio = repair_streaming_wav(response.content) if "wav" in mime else response.content
+        return Speech(text=text, audio=audio, mime=mime, engine=self.name, latency_ms=latency)
 
     def _post(self, body: dict[str, object]) -> httpx.Response:
         return request_with_retry(

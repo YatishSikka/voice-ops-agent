@@ -62,7 +62,8 @@ class Config:
             # playai-tts was decommissioned; Orpheus is the current Groq TTS and
             # needs one-time terms acceptance in the console before it answers.
             tts_model=_env("TTS_MODEL", "canopylabs/orpheus-v1-english"),
-            tts_voice=_env("TTS_VOICE", "tara"),
+            # Orpheus voices: autumn diana hannah austin daniel troy
+            tts_voice=_env("TTS_VOICE", "autumn"),
             # rstrip("/") so callers can always join with a leading-slash path
             n8n_base_url=(_env("N8N_BASE_URL") or "").rstrip("/") or None,
             n8n_api_key=_env("N8N_API_KEY"),
