@@ -1,0 +1,30 @@
+# Render blueprint -- the free-tier fallback after Hugging Face made Gradio
+# Spaces PRO-only (see README, "Honest limitations").
+#
+# Deploy: render.com -> New -> Blueprint -> point at this repo, then set the
+# secrets below in the dashboard. Free instances spin down when idle and take
+# roughly a minute to wake.
+services:
+  - type: web
+    name: voice-ops-agent
+    runtime: python
+    plan: free
+    buildCommand: pip install -r requirements.txt
+    startCommand: python app.py
+    envVars:
+      - key: PYTHON_VERSION
+        value: "3.11.4"
+      # Set these in the Render dashboard, never in this file.
+      - key: GROQ_API_KEY
+        sync: false
+      - key: N8N_API_KEY
+        sync: false
+      # A public URL for n8n -- a Cloudflare Tunnel to a local instance, or a
+      # hosted one. localhost is unreachable from here, and the agent will
+      # simply report that it has no tools.
+      - key: N8N_BASE_URL
+        sync: false
+      - key: TTS_MODEL
+        value: canopylabs/orpheus-v1-english
+      - key: TTS_VOICE
+        value: autumn

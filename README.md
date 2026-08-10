@@ -16,14 +16,14 @@ Telegram when it finishes — including as a voice note.
 > workflow, and speaks the answer — with the tool list discovered at runtime
 > rather than compiled in. Not yet done: real integrations behind the
 > workflows (they return fixtures today), the async Telegram callback, evals,
-> and deployment to a Space.
+> and hosting.
 
 ---
 
 ## Architecture
 
 ```
-Browser mic (Gradio, HF Space)
+Browser mic (Gradio)
         │  audio in
         ▼
 ┌──────────────────────────────────────┐
@@ -45,7 +45,7 @@ Browser mic (Gradio, HF Space)
                 │ POST webhook
                 ▼
 ┌──────────────────────────────────────┐
-│  n8n   (Cloud trial → self-hosted)   │
+│  n8n   (self-hosted, community)      │
 │    Gmail · Calendar · Notion · GitHub │
 └───────────────┬──────────────────────┘
                 │ on completion
@@ -88,12 +88,12 @@ The whole system runs at **$0**.
 | LLM | Groq `llama-3.3-70b-versatile` | ~30 RPM, 1,000 RPD, 12K TPM |
 | TTS | Groq TTS → browser `speechSynthesis` fallback | preview-gated |
 | Orchestration | n8n community edition, self-hosted | unlimited |
-| Hosting | Hugging Face Space, Gradio on ZeroGPU | 2 Spaces, sleeps when idle |
+| Hosting | Render free web service | spins down when idle, ~1 min cold start |
 | Callback | Telegram Bot API | unlimited |
 | Tracing | Langfuse Cloud | 50K observations/mo |
 
-The ZeroGPU daily quota is untouched: it only burns inside `@spaces.GPU`
-functions, and this app has none — every model call goes to Groq over HTTP.
+The app needs no GPU of its own: every model call goes to Groq over HTTP, so
+any host that can run a Python web process is enough.
 
 ## Getting started
 
@@ -130,7 +130,7 @@ Verified on n8n 2.33.7 with Node 24, despite n8n officially targeting Node
 20/22. A `Failed to refresh MCP registry` line on startup is harmless — it is
 n8n fetching its own public server catalogue, unrelated to this project.
 
-Deploying to a Space later means giving n8n a public address — a Cloudflare
+Hosting the app elsewhere means giving n8n a public address — a Cloudflare
 Tunnel is enough, and only `N8N_BASE_URL` changes.
 
 `preflight.py` is a gate, not a formality. Three things can invalidate the whole
@@ -138,7 +138,7 @@ design, so it verifies all three and prints a pass/fail table:
 
 | Gate | What it proves | If it fails |
 |---|---|---|
-| Hugging Face | Token valid, email verified, account >30 days | ZeroGPU hosting is blocked — fall back to a Static Space with the backend behind a Cloudflare Tunnel |
+| Hugging Face | Token valid, email verified, account >30 days | Kept as a gate because the account checks still gate ZeroGPU; hosting itself has since moved off Spaces (see Limitations) |
 | n8n | `GET /api/v1/workflows` answers, and tag filtering works | The registry has nothing to read — switch to self-hosted `npx n8n` immediately |
 | Groq | STT, LLM **and** TTS each accept a real call | A listed model is not a callable one; a gated TTS drops to the browser fallback |
 
@@ -169,7 +169,7 @@ All configuration is environment variables, read once in `config.py`. See
 | Phase | Deliverable | Status |
 |---|---|---|
 | 0 | Preflight gate checks | **Done** — all gates green |
-| 1 | Voice loop: mic → STT → echo → TTS, deployed | **Works locally**; Space deployment pending |
+| 1 | Voice loop: mic → STT → TTS | **Works locally**; hosting pending |
 | 2 | **Tool registry** — n8n workflows as runtime-discovered tools | **Works locally** — end to end, voice to n8n and back |
 | 3 | Async callback — long jobs return via Telegram voice note | Pending |
 | 4 | ~8 workflows, rate-limit queue, confirmation gate on destructive tools | Pending |
@@ -189,10 +189,19 @@ The tool list freezes at the end of Phase 4. That is the scope-creep guard.
   until the eval harness produces one.
 - **Free-tier ceilings are real.** Groq's ~30 RPM is comfortable for one
   speaker and not for a demo audience. Evals run serially for this reason.
-- **The Space sleeps when idle**, so the first request after a quiet period pays
-  a cold start.
-- **No persistent disk on Spaces.** Durable state lives in n8n; session state is
-  in-memory by design.
+- **The host spins down when idle**, so the first request after a quiet period
+  pays roughly a minute of cold start.
+- **No persistent disk on the free host.** Durable state lives in n8n; session
+  state is in-memory by design.
+
+- **Two free tiers disappeared underneath this plan, mid-build.** n8n Cloud's
+  trial turned out to disable the public API, and Hugging Face made Gradio
+  Spaces PRO-only — only Static Spaces remain free, and a Gradio app is not
+  static. Both were verified assumptions when the plan was written. The lesson
+  worth keeping: check that a free tier still exists *and* still includes the
+  specific feature you need, then design so the host is swappable. Here it
+  cost two `.env` values and a `render.yaml`, because nothing above the
+  transport layer knew where anything ran.
 - **`ClaudeProvider` is written but unverified against the live API.** It is the
   swap path, not the shipping path.
 - **n8n runs self-hosted, and not by preference.** n8n Cloud has no free tier
