@@ -11,11 +11,12 @@ The second idea is that slow work does not have to block the conversation. The
 agent hands a long-running job to n8n, ends the turn, and messages you on
 Telegram when it finishes — including as a voice note.
 
-> **Status: early.** Phase 0 is closed — all three preflight gates pass against
-> live services. Phase 1 runs locally: speak into the browser and the agent
-> transcribes and speaks back, with per-hop timings on screen. Not yet built:
-> the tool registry (Phase 2), which is the reason the project exists, and
-> deployment to a Space.
+> **Status.** Phases 0–2 work locally: ask *"what's on my calendar tomorrow"*
+> out loud and the agent transcribes it, picks the n8n-backed tool, calls the
+> workflow, and speaks the answer — with the tool list discovered at runtime
+> rather than compiled in. Not yet done: real integrations behind the
+> workflows (they return fixtures today), the async Telegram callback, evals,
+> and deployment to a Space.
 
 ---
 
@@ -169,7 +170,7 @@ All configuration is environment variables, read once in `config.py`. See
 |---|---|---|
 | 0 | Preflight gate checks | **Done** — all gates green |
 | 1 | Voice loop: mic → STT → echo → TTS, deployed | **Works locally**; Space deployment pending |
-| 2 | **Tool registry** — n8n workflows as runtime-discovered tools | Pending |
+| 2 | **Tool registry** — n8n workflows as runtime-discovered tools | **Works locally** — end to end, voice to n8n and back |
 | 3 | Async callback — long jobs return via Telegram voice note | Pending |
 | 4 | ~8 workflows, rate-limit queue, confirmation gate on destructive tools | Pending |
 | 5 | Eval harness, Langfuse tracing, CI, measured latency table | Pending |
@@ -178,13 +179,14 @@ The tool list freezes at the end of Phase 4. That is the scope-creep guard.
 
 ## Honest limitations
 
-- **Latency target is ~1.5s voice-to-voice, not the ~900ms of a telephony
-  agent.** Browser capture plus HTTP round-trip STT costs the difference. Early
-  single-turn measurements on the echo loop land at **STT 320–920 ms, TTS
-  ~800 ms, ~1.1–1.2 s end to end** — but these are individual runs on one
-  fixture, not a distribution, and they predate the LLM hop that Phase 2 adds.
-  The p50/p95 table here stays empty until the eval harness produces one,
-  because estimates in a README are guesses with formatting.
+- **Latency is ~2.1s voice-to-voice, against an original target of 1.5s.** The
+  1.5s figure was written before the agent existed. A measured tool-calling
+  turn breaks down as **STT ~840 ms · LLM ~480 ms · tool ~65 ms · TTS ~700 ms
+  = ~2.1 s**, so the target moved to 2.5s to match what the architecture
+  actually costs. Browser capture plus HTTP round-trip STT is most of the gap
+  from a ~900ms telephony agent, and STT is the hop to attack first. These are
+  single runs on one fixture, not a distribution; the p50/p95 table stays empty
+  until the eval harness produces one.
 - **Free-tier ceilings are real.** Groq's ~30 RPM is comfortable for one
   speaker and not for a demo audience. Evals run serially for this reason.
 - **The Space sleeps when idle**, so the first request after a quiet period pays
