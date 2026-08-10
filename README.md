@@ -9,14 +9,14 @@ the n8n UI — no code change, no redeploy, no restart.
 
 The second idea is that slow work does not have to block the conversation. The
 agent hands a long-running job to n8n, ends the turn, and messages you on
-Telegram when it finishes — including as a voice note.
+Telegram when it finishes — as a spoken voice note, so the interaction stays
+voice-first past the end of the conversation.
 
 > **Status.** Phases 0–2 work locally: ask *"what's on my calendar tomorrow"*
 > out loud and the agent transcribes it, picks the n8n-backed tool, calls the
 > workflow, and speaks the answer — with the tool list discovered at runtime
 > rather than compiled in. Not yet done: real integrations behind the
-> workflows (they return fixtures today), the async Telegram callback, evals,
-> and hosting.
+> workflows — they return fixtures today — and hosting.
 
 ---
 
@@ -207,7 +207,7 @@ the model a tool that cannot work.
 | 0 | Preflight gate checks | **Done** — all gates green |
 | 1 | Voice loop: mic → STT → TTS | **Works locally**; hosting pending |
 | 2 | **Tool registry** — n8n workflows as runtime-discovered tools | **Works locally** — end to end, voice to n8n and back |
-| 3 | Async callback — long jobs return via Telegram voice note | **Works locally** — awaiting a Telegram token to verify delivery |
+| 3 | Async callback — long jobs return via Telegram voice note | **Done** — verified end to end against live Telegram |
 | 4 | ~8 workflows, rate-limit queue, confirmation gate on destructive tools | Pending |
 | 5 | Eval harness, Langfuse tracing, CI, measured latency table | Pending |
 
