@@ -1,0 +1,31 @@
+# Secrets -- .env holds live Groq / n8n / Telegram credentials.
+.env
+.env.*
+!.env.example
+
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+*.egg-info/
+.pytest_cache/
+.ruff_cache/
+
+# Local task store (Phase 3) and generated audio
+*.db
+*.sqlite3
+/tmp/
+audio_out/
+
+# Eval artifacts -- fixtures are committed, results are not
+evals/results/
+
+# Machine-local Claude Code permissions (.claude/settings.json stays tracked)
+.claude/settings.local.json
+
+# OS / editor
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/

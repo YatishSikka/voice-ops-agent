@@ -1,0 +1,6 @@
+-r requirements.txt
+
+pytest>=8.0
+pytest-asyncio>=0.23
+respx>=0.21               # httpx mocking for n8n_client / registry tests
+ruff>=0.6
