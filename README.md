@@ -193,6 +193,12 @@ Notes accepts a bare JSON Schema, or an envelope carrying more:
 }
 ```
 
+`"destructive": true` marks an action that cannot be taken back. The agent
+calls the tool, gets a confirmation prompt instead of an effect, reads the
+action back to the user, and only proceeds once they agree — the confirmation
+token is bound to the exact arguments it was issued for, so a yes for one
+action cannot execute a different one, and it is single use.
+
 `"async": true` marks work too slow to keep a conversation waiting. The agent
 fires it with a task id and a callback URL, tells the user it will report back,
 and ends the turn; when n8n calls back, the result arrives over Telegram. The
@@ -208,20 +214,21 @@ the model a tool that cannot work.
 | 1 | Voice loop: mic → STT → TTS | **Works locally**; hosting pending |
 | 2 | **Tool registry** — n8n workflows as runtime-discovered tools | **Works locally** — end to end, voice to n8n and back |
 | 3 | Async callback — long jobs return via Telegram voice note | **Done** — verified end to end against live Telegram |
-| 4 | ~8 workflows, rate-limit queue, confirmation gate on destructive tools | Pending |
+| 4 | Confirmation gate on destructive tools | **Done**; real integrations still fixtures |
 | 5 | Eval harness, Langfuse tracing, CI, measured latency table | Pending |
 
 The tool list freezes at the end of Phase 4. That is the scope-creep guard.
 
 ## Eval scorecard
 
-14 scenarios, run serially against live Groq and n8n
-(`python evals/run_evals.py --audio`):
+17 scenarios, run serially against live Groq and n8n
+(`python evals/run_evals.py --audio`). Three are two-turn: a confirmation gate
+is not a gate unless the first turn stops *and* the second one goes through.
 
 | Metric | Result |
 |---|---|
-| Task success | **14/14** |
-| Tool selection | **14/14** |
+| Task success | **17/17** |
+| Tool selection | **17/17** |
 | Restraint — no tool when none is needed | **6/6** |
 | Word error rate | **0%** over 4 spoken fixtures |
 

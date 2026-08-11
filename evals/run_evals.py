@@ -40,8 +40,11 @@ from tools.registry import ToolRegistry
 SCENARIOS = Path(__file__).parent / "scenarios.yaml"
 FIXTURES = Path(__file__).parent / "fixtures"
 
-# Space between turns. Well inside 30 RPM even when a turn costs two calls.
-PACING_S = 2.5
+# Space between turns. This is not only about avoiding 429s: retry backoff
+# happens *inside* the timed span, so a rate-limited run would report the
+# backoff as latency. Pacing keeps the numbers measurements rather than
+# artefacts of the free tier.
+PACING_S = 4.0
 
 
 @dataclass
@@ -152,6 +155,30 @@ def run_scenario(scenario: dict[str, Any], agent: AgentLoop) -> Outcome:
         actual = turn.invocations[0].arguments.get(key) if turn.invocations else None
         if actual is None or str(value).lower() not in str(actual).lower():
             outcome.failures.append(f"arg {key}={actual!r}, wanted ~{value!r} (advisory)")
+
+    # A `then` block runs a second turn on the first one's history. Some
+    # behaviour only exists across turns -- a confirmation gate is not a
+    # confirmation gate unless the follow-up actually goes through.
+    follow_up = scenario.get("then")
+    if follow_up:
+        history = turn.messages + [{"role": "assistant", "content": turn.reply}]
+        try:
+            second = agent.run(follow_up["say"], history=history, trace=trace)
+        except Exception as exc:  # noqa: BLE001
+            outcome.error = f"follow-up: {type(exc).__name__}: {exc}"
+            return outcome
+
+        outcome.reply = f"{turn.reply} || {second.reply}"
+        outcome.tools_called += second.tools_used
+        expected_second = list(follow_up.get("expect_tools") or [])
+        if sorted(set(second.tools_used)) != sorted(set(expected_second)):
+            outcome.tool_ok = False
+            outcome.failures.append(
+                f"follow-up tools {sorted(set(second.tools_used))} != {sorted(set(expected_second))}"
+            )
+        second_failures = check_content(follow_up, second.reply)
+        outcome.failures += [f"follow-up: {f}" for f in second_failures]
+        outcome.content_ok = outcome.content_ok and not second_failures
 
     outcome.latency_ms = trace.by_hop()
     outcome.total_ms = trace.total_ms()

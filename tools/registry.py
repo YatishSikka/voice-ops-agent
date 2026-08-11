@@ -11,7 +11,9 @@ field costs you one tool rather than the conversation.
 
 from __future__ import annotations
 
+import json
 import logging
+import secrets
 import time
 from dataclasses import dataclass, field
 from typing import Any
@@ -20,7 +22,7 @@ from agent.providers import ToolSpec
 from config import config
 from tasks.store import store
 from tools.n8n_client import N8nClient, N8nError, Workflow
-from tools.schema import SchemaError, ToolBinding, build_binding
+from tools.schema import CONFIRM_KEY, SchemaError, ToolBinding, build_binding
 
 log = logging.getLogger(__name__)
 
@@ -61,6 +63,8 @@ class ToolRegistry:
         self.tag = tag or config.n8n_tool_tag
         self.cache_ttl = config.registry_cache_ttl if cache_ttl is None else cache_ttl
         self._cache: Discovery | None = None
+        # Issued confirmation tokens -> the exact action each authorises.
+        self._pending: dict[str, str] = {}
 
     @property
     def client(self) -> N8nClient:
@@ -158,6 +162,12 @@ class ToolRegistry:
         if "__parse_error__" in arguments:
             return {"error": arguments["__parse_error__"]}
 
+        if binding.is_destructive:
+            gate = self._check_confirmation(name, arguments)
+            if gate is not None:
+                return gate
+            arguments = {k: v for k, v in arguments.items() if k != CONFIRM_KEY}
+
         if binding.is_async:
             return self._dispatch_async(binding, name, arguments)
 
@@ -168,6 +178,56 @@ class ToolRegistry:
         except N8nError as exc:
             log.warning("Tool %r failed: %s", name, exc)
             return {"error": f"{name} failed: {exc}"}
+
+    def _check_confirmation(
+        self, name: str, arguments: dict[str, Any]
+    ) -> dict[str, Any] | None:
+        """Gate a destructive tool. Returns a prompt to relay, or None to proceed.
+
+        The token is bound to the exact arguments it was issued for. Confirming
+        "email Dana saying I'm late" must not authorise emailing someone else
+        -- without that binding, a model could get a yes for a harmless action
+        and then execute a different one with the same token.
+
+        Tokens are single use, so a repeated call cannot re-fire the action.
+        """
+        token = str(arguments.get(CONFIRM_KEY) or "")
+        payload = {k: v for k, v in arguments.items() if k != CONFIRM_KEY}
+        fingerprint = self._fingerprint(name, payload)
+
+        if token:
+            expected = self._pending.pop(token, None)
+            if expected is None:
+                return {
+                    "error": "That confirmation token is unknown or already used. "
+                             "Ask the user again and use the new token."
+                }
+            if expected != fingerprint:
+                log.warning("Confirmation token for %r reused with different arguments", name)
+                return {
+                    "error": "The arguments changed since the user confirmed. "
+                             "Describe the new action and get a fresh confirmation."
+                }
+            return None  # confirmed, and for exactly this action
+
+        token = secrets.token_urlsafe(8)
+        self._pending[token] = fingerprint
+        readable = ", ".join(f"{k}={v!r}" for k, v in payload.items()) or "no arguments"
+        return {
+            "status": "confirmation_required",
+            CONFIRM_KEY: token,
+            "action": f"{name}({readable})",
+            "instruction": (
+                "Do not perform this yet. Tell the user plainly what is about to "
+                "happen, in one sentence, and ask them to confirm. If they agree, "
+                f"call {name} again with the same arguments plus {CONFIRM_KEY} set "
+                "to the token above. If they decline, do nothing and say so."
+            ),
+        }
+
+    @staticmethod
+    def _fingerprint(name: str, payload: dict[str, Any]) -> str:
+        return f"{name}:{json.dumps(payload, sort_keys=True, default=str)}"
 
     def _dispatch_async(
         self, binding: ToolBinding, name: str, arguments: dict[str, Any]

@@ -46,6 +46,9 @@ _FENCE = re.compile(r"```(?:json)?\s*(.*?)```", re.DOTALL)
 
 EMPTY_SCHEMA: dict[str, Any] = {"type": "object", "properties": {}}
 
+# The argument a destructive tool's second call carries.
+CONFIRM_KEY = "__confirm"
+
 
 class SchemaError(ValueError):
     """A workflow cannot be expressed as a tool."""
@@ -61,6 +64,7 @@ class ToolBinding:
     webhook_path: str
     http_method: str = "POST"
     is_async: bool = False
+    is_destructive: bool = False
 
 
 @dataclass(frozen=True)
@@ -70,6 +74,7 @@ class NotesSpec:
     description: str = ""
     schema: dict[str, Any] = field(default_factory=dict)
     is_async: bool = False
+    is_destructive: bool = False
 
 
 def slugify(name: str) -> str:
@@ -112,17 +117,20 @@ def parse_notes(notes: str) -> NotesSpec:
     # "async": true means the workflow takes long enough that the conversation
     # should not wait for it -- fire it and notify on completion instead.
     is_async = bool(parsed.get("async", False))
+    # "destructive": true means the effect cannot be taken back -- sending
+    # mail, deleting an event. The agent must read it back and get a yes.
+    is_destructive = bool(parsed.get("destructive", False))
 
     # Envelope form: {"description": ..., "parameters": {...}}
     if "parameters" in parsed:
         schema = parsed["parameters"]
         if not isinstance(schema, dict):
             raise SchemaError("'parameters' must be an object")
-        return NotesSpec(description, _normalise(schema), is_async)
+        return NotesSpec(description, _normalise(schema), is_async, is_destructive)
 
     # Bare-schema form.
     if "properties" in parsed or parsed.get("type") == "object":
-        return NotesSpec(description, _normalise(parsed), is_async)
+        return NotesSpec(description, _normalise(parsed), is_async, is_destructive)
 
     raise SchemaError(
         "notes JSON has neither 'parameters' nor 'properties' -- "
@@ -193,6 +201,15 @@ def build_binding(workflow: Workflow) -> ToolBinding:
             "the result is sent to the user by message when it finishes."
         )
 
+    if notes.is_destructive:
+        description = (
+            f"{description} This has real, irreversible effects and requires "
+            "confirmation: call it once to get a confirmation prompt, read the "
+            "action back to the user, and only call it again with the returned "
+            f"{CONFIRM_KEY} token once they agree."
+        )
+        schema = _with_confirm_property(schema)
+
     return ToolBinding(
         spec=ToolSpec(name=slugify(workflow.name), description=description, parameters=schema),
         workflow_id=workflow.id,
@@ -200,4 +217,26 @@ def build_binding(workflow: Workflow) -> ToolBinding:
         webhook_path=webhook_path(node),
         http_method=method,
         is_async=notes.is_async,
+        is_destructive=notes.is_destructive,
     )
+
+
+def _with_confirm_property(schema: dict[str, Any]) -> dict[str, Any]:
+    """Add the confirmation token to a destructive tool's arguments.
+
+    It has to be in the schema or the model has no legal way to send it back --
+    providers reject arguments the schema does not declare.
+    """
+    out = dict(schema)
+    out["properties"] = {
+        **out.get("properties", {}),
+        CONFIRM_KEY: {
+            "type": "string",
+            "description": (
+                "Confirmation token. Omit on the first call. On the second "
+                "call, after the user has agreed out loud, pass the token "
+                "returned by the first call."
+            ),
+        },
+    }
+    return out
