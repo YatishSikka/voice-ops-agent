@@ -103,7 +103,7 @@ The whole system runs at **$0**.
 | Hop | Service | Free allowance |
 |---|---|---|
 | STT | Groq `whisper-large-v3-turbo` | 2,000 req/day, 28,800 audio-sec/day |
-| LLM | Groq `llama-3.3-70b-versatile` | ~30 RPM, 1,000 RPD, 12K TPM |
+| LLM | Groq `llama-3.3-70b-versatile` | ~30 RPM, 1,000 RPD, 12K TPM, **100K tokens/day** |
 | TTS | Groq Orpheus → text fallback | terms-gated, one-time accept |
 | Orchestration | n8n community edition, self-hosted | unlimited |
 | Interface | Telegram Bot API | unlimited, no inbound port needed |
@@ -303,8 +303,12 @@ full run costs about a minute.
   from a ~900ms telephony agent, and STT is the hop to attack first. These are
   single runs on one fixture, not a distribution; the p50/p95 table stays empty
   until the eval harness produces one.
-- **Free-tier ceilings are real.** Groq's ~30 RPM is comfortable for one
-  speaker and not for a demo audience. Evals run serially for this reason.
+- **Free-tier ceilings are real, and the daily one bites first.** Groq allows
+  100K tokens a day, which a day of development and two full eval runs will
+  exhaust — at which point the agent says so and stops until it resets. The
+  per-minute limit is the one people expect; the daily cap is the one that ends
+  your afternoon. The transport tells them apart, because retrying a daily
+  quota just spends 90 seconds per call to learn nothing.
 - **The host spins down when idle**, so the first request after a quiet period
   pays roughly a minute of cold start.
 - **No persistent disk on the free host.** Durable state lives in n8n; session

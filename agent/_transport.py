@@ -21,6 +21,17 @@ MAX_RETRIES = 3
 BACKOFF_BASE_S = 1.5
 RETRY_STATUS = (429, 500, 502, 503, 529)
 
+# A 429 covers two very different things. A per-minute limit clears in seconds
+# and is worth waiting out; a daily quota does not clear today, so retrying it
+# just spends a minute and a half per call to learn the same thing. Groq names
+# the window in the error body.
+DAILY_QUOTA_MARKERS = ("per day", "TPD", "RPD", "requests per day", "tokens per day")
+
+
+def is_daily_quota(body: str) -> bool:
+    lowered = body.lower()
+    return any(marker.lower() in lowered for marker in DAILY_QUOTA_MARKERS)
+
 
 class TransportError(RuntimeError):
     """A hop failed in a way retrying did not fix.
@@ -77,6 +88,13 @@ def request_with_retry(
 
         if response.status_code == 200:
             return response
+
+        if response.status_code == 429 and is_daily_quota(response.text):
+            raise _build(
+                error_cls,
+                f"{label}: daily quota exhausted -- {response.text[:300]}",
+                response.status_code,
+            )
 
         if response.status_code in RETRY_STATUS and attempt < max_retries:
             time.sleep(backoff_seconds(attempt, response.headers.get("retry-after")))

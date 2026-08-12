@@ -192,7 +192,14 @@ class AgentLoop:
                 )
             except LLMError as exc:
                 log.error("LLM call failed: %s", exc)
-                result.reply = "Sorry, I could not reach the language model just now."
+                # A daily quota is a different problem from a blip, and the
+                # user can act on it -- say which one it is.
+                result.reply = (
+                    "I've used up my daily quota on the language model. "
+                    "It resets tomorrow."
+                    if "daily quota" in str(exc)
+                    else "Sorry, I could not reach the language model just now."
+                )
                 result.error = str(exc)
                 return result
 

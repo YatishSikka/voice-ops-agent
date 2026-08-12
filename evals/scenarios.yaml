@@ -10,8 +10,14 @@
 # the model rewords itself.
 #
 # Tools available in the reference set:
-#   get_calendar_events(day)      -- sync, returns fixture events
-#   generate_monthly_report(month) -- async, calls back later
+#   get_calendar_events(date)        -- sync, reads Google Calendar
+#   find_free_time(date)             -- sync, gaps in a day
+#   summarize_my_week(start_date)    -- async, reports back later
+#   create_calendar_event(...)       -- destructive, confirmed first
+#
+# Anything marked `side_effects: true` changes real state and is skipped
+# unless you pass --with-side-effects, so a routine run cannot litter a real
+# calendar with test meetings.
 
 # Content assertions here would pin the suite to whatever is on the calendar
 # today, so these check tool selection and arguments only. The reply is scored
@@ -53,16 +59,24 @@
 # The month argument is resolved by the model to YYYY-MM, so it is not
 # asserted literally here -- what matters is that the agent hands off rather
 # than pretending to have an answer.
-- id: report_async
-  say: generate the monthly report for July
-  expect_tools: [generate_monthly_report]
+- id: week_summary_async
+  say: how does my week look
+  expect_tools: [summarize_my_week]
   must_mention: [message, "let you know", "notify", "when it", "get back"]
   match: any
   audio: true
 
-- id: report_async_phrasing
-  say: I need the usage report for June please
-  expect_tools: [generate_monthly_report]
+- id: week_summary_phrasing
+  say: give me a summary of this week
+  expect_tools: [summarize_my_week]
+
+- id: find_free_time
+  say: when am I free tomorrow
+  expect_tools: [find_free_time]
+
+- id: find_free_time_phrasing
+  say: do I have any gaps in my day tomorrow
+  expect_tools: [find_free_time]
 
 # --- should NOT reach for a tool ------------------------------------------
 
@@ -115,25 +129,27 @@
 # one goes through.
 
 - id: destructive_asks_first
-  say: send an email to Dana saying I'll be ten minutes late
-  expect_tools: [send_email]
-  must_mention: [dana, "confirm", "sure", "shall I", "want me", "ok to"]
+  say: block an hour for deep work tomorrow at 2pm
+  expect_tools: [create_calendar_event]
+  must_mention: ["confirm", "sure", "shall I", "want me", "ok", "okay", "about to"]
   match: any
 
-- id: destructive_completes_on_yes
-  say: send an email to Dana saying I'll be ten minutes late
-  expect_tools: [send_email]
+- id: destructive_stops_on_no
+  say: put a dentist appointment on my calendar tomorrow at 4pm
+  expect_tools: [create_calendar_event]
   then:
-    say: yes, go ahead
-    expect_tools: [send_email]
-    must_mention: [sent, "done", "has been"]
+    say: no, don't do that
+    expect_tools: []
+    must_mention: ["won't", "not", "cancelled", "canceled", "haven't", "no problem"]
     match: any
 
-- id: destructive_stops_on_no
-  say: send an email to Dana saying I quit
-  expect_tools: [send_email]
+# Creates a real event, so it only runs with --with-side-effects.
+- id: destructive_completes_on_yes
+  side_effects: true
+  say: block half an hour for a test event on 2026-12-31 at 11pm
+  expect_tools: [create_calendar_event]
   then:
-    say: no, don't send that
-    expect_tools: []
-    must_mention: ["won't", "not sent", "cancelled", "canceled", "did not", "haven't"]
+    say: yes, go ahead
+    expect_tools: [create_calendar_event]
+    must_mention: [scheduled, booked, created, "added", "has been", "done"]
     match: any

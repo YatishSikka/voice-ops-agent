@@ -282,9 +282,23 @@ def main() -> int:
     parser.add_argument("--audio", action="store_true", help="also score STT over fixtures")
     parser.add_argument("--out", default="evals/results/scorecard.md", help="scorecard path")
     parser.add_argument("--only", default=None, help="run one scenario by id")
+    parser.add_argument(
+        "--with-side-effects", action="store_true",
+        help="also run scenarios that change real state, e.g. booking a calendar event",
+    )
     args = parser.parse_args()
 
     scenarios = yaml.safe_load(SCENARIOS.read_text(encoding="utf-8"))
+    if not args.with_side_effects:
+        skipped = [s for s in scenarios if s.get("side_effects")]
+        scenarios = [s for s in scenarios if not s.get("side_effects")]
+        if skipped:
+            print(
+                f"Skipping {len(skipped)} scenario(s) that change real state: "
+                f"{', '.join(s['id'] for s in skipped)}"
+            )
+            print("Pass --with-side-effects to include them.")
+            print()
     if args.only:
         scenarios = [s for s in scenarios if s["id"] == args.only]
         if not scenarios:
