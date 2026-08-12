@@ -1,0 +1,56 @@
+# Both halves of the system, on one host.
+#
+# The agent needs n8n to answer, and n8n needs to call the agent back when a
+# background workflow finishes. Running them together on a private network
+# means neither is exposed to the internet: Telegram is reached by outbound
+# polling, so nothing has to accept an inbound connection at all.
+#
+#   docker compose up -d
+#   docker compose logs -f bot
+#
+# n8n's editor is published on 5678 so you can build workflows. Bind it to
+# localhost and reach it over an SSH tunnel rather than opening it to the world
+# -- it holds your Google credentials.
+
+services:
+  n8n:
+    image: docker.n8n.io/n8nio/n8n:latest
+    restart: unless-stopped
+    ports:
+      # localhost only. Use `ssh -L 5678:localhost:5678 user@host` to reach it.
+      - "127.0.0.1:5678:5678"
+    environment:
+      - N8N_HOST=localhost
+      - N8N_PORT=5678
+      - N8N_PROTOCOL=http
+      # Workflows resolve their own webhook URLs from this.
+      - WEBHOOK_URL=http://n8n:5678/
+      - GENERIC_TIMEZONE=${TZ:-America/New_York}
+      - TZ=${TZ:-America/New_York}
+      # The public API is what the tool registry reads. Without it there are
+      # no tools -- this is the setting n8n Cloud's trial disables.
+      - N8N_PUBLIC_API_DISABLED=false
+      - N8N_DIAGNOSTICS_ENABLED=false
+    volumes:
+      # Workflows, credentials and the SQLite database live here. Losing this
+      # volume means re-importing from n8n/workflows/ and redoing OAuth.
+      - n8n_data:/home/node/.n8n
+
+  bot:
+    build: .
+    restart: unless-stopped
+    depends_on:
+      - n8n
+    env_file:
+      - .env
+    environment:
+      # Override whatever .env says: inside compose these are service names,
+      # not localhost. Getting this wrong is the usual first failure.
+      - N8N_BASE_URL=http://n8n:5678
+      - PUBLIC_BASE_URL=http://bot:7860
+      - TZ=${TZ:-America/New_York}
+    # No ports published. Telegram is polled outbound, and only n8n needs to
+    # reach the callback server, which it does over the compose network.
+
+volumes:
+  n8n_data:

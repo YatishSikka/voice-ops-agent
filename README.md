@@ -167,6 +167,14 @@ design, so it verifies all three and prints a pass/fail table:
 It exits non-zero on failure and takes `--json` for CI. A `SKIP` is not a pass —
 an unverified gate is an unresolved one.
 
+## Deploying
+
+The agent needs a machine that keeps a process alive, and nothing else — no
+public URL, no tunnel, no inbound port, because Telegram is polled outbound.
+`docker compose up -d` runs the agent and n8n together; see **[DEPLOY.md](DEPLOY.md)**
+for hosts with a genuinely free always-on tier, a Docker-free systemd setup,
+and what the common failures look like.
+
 ## Development
 
 ```bash
