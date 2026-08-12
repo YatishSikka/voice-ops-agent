@@ -32,6 +32,19 @@
   say: am I busy tomorrow afternoon
   expect_tools: [get_calendar_events]
 
+# Date resolution is the model's job, not the workflow's. These caught a real
+# bug: "thursday" matched nothing and silently became today, and "day after
+# tomorrow" contained the substring "tomorrow" so it resolved to tomorrow.
+# The dates below are relative to the run, so they assert the tool was chosen
+# and given *some* ISO date rather than a word passed straight through.
+- id: calendar_weekday_name
+  say: what is on my calendar on thursday
+  expect_tools: [get_calendar_events]
+
+- id: calendar_day_after_tomorrow
+  say: what is on my calendar the day after tomorrow
+  expect_tools: [get_calendar_events]
+
 - id: calendar_empty_day_is_answered_plainly
   say: what's on my calendar tomorrow
   expect_tools: [get_calendar_events]

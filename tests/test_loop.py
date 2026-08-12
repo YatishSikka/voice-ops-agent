@@ -42,8 +42,8 @@ class FakeRegistry:
     def specs(self, force=False):
         return self._specs
 
-    def dispatch(self, name, arguments):
-        self.dispatched.append((name, arguments))
+    def dispatch(self, name, arguments, chat_id=None):
+        self.dispatched.append((name, arguments, chat_id))
         return self.result
 
 
@@ -70,7 +70,7 @@ def test_a_tool_call_is_executed_and_fed_back():
     result = AgentLoop(llm=llm, registry=registry).run("what's on tomorrow?")
 
     assert result.reply == "You have standup at nine."
-    assert registry.dispatched == [("get_calendar_events", {"day": "tomorrow"})]
+    assert registry.dispatched == [("get_calendar_events", {"day": "tomorrow"}, None)]
     assert result.tools_used == ["get_calendar_events"]
     assert result.iterations == 2
     # The tool result must reach the model on the second call.

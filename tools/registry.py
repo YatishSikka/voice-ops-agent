@@ -142,7 +142,9 @@ class ToolRegistry:
     def specs(self, force: bool = False) -> list[ToolSpec]:
         return self.discover(force=force).specs
 
-    def dispatch(self, name: str, arguments: dict[str, Any]) -> Any:
+    def dispatch(
+        self, name: str, arguments: dict[str, Any], chat_id: int | str | None = None
+    ) -> Any:
         """Run a tool call. Never raises -- the model gets errors as results.
 
         Feeding a failure back as a tool result lets the model apologise or try
@@ -169,7 +171,7 @@ class ToolRegistry:
             arguments = {k: v for k, v in arguments.items() if k != CONFIRM_KEY}
 
         if binding.is_async:
-            return self._dispatch_async(binding, name, arguments)
+            return self._dispatch_async(binding, name, arguments, chat_id)
 
         try:
             return self.client.call_webhook(
@@ -230,14 +232,18 @@ class ToolRegistry:
         return f"{name}:{json.dumps(payload, sort_keys=True, default=str)}"
 
     def _dispatch_async(
-        self, binding: ToolBinding, name: str, arguments: dict[str, Any]
+        self,
+        binding: ToolBinding,
+        name: str,
+        arguments: dict[str, Any],
+        chat_id: int | str | None = None,
     ) -> dict[str, Any]:
         """Start a long-running workflow and return without waiting.
 
         The workflow is handed a task id and a URL to call when it finishes.
         The conversation ends here; delivery happens over Telegram.
         """
-        task = store.create(name, arguments)
+        task = store.create(name, arguments, chat_id=chat_id)
         callback_url = (
             f"{config.public_base_url}/tasks/{task.id}/complete"
             if config.public_base_url

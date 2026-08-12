@@ -30,6 +30,9 @@ class Task:
     id: str
     tool: str
     arguments: dict[str, Any] = field(default_factory=dict)
+    # Which Telegram chat asked for this. A callback has to go back to the
+    # person who requested it, not to a globally configured chat.
+    chat_id: int | str | None = None
     status: Status = "pending"
     created_at: float = field(default_factory=time.time)
     completed_at: float | None = None
@@ -50,8 +53,15 @@ class TaskStore:
         self._lock = threading.Lock()
         self.max_tasks = max_tasks
 
-    def create(self, tool: str, arguments: dict[str, Any] | None = None) -> Task:
-        task = Task(id=uuid.uuid4().hex[:16], tool=tool, arguments=arguments or {})
+    def create(
+        self,
+        tool: str,
+        arguments: dict[str, Any] | None = None,
+        chat_id: int | str | None = None,
+    ) -> Task:
+        task = Task(
+            id=uuid.uuid4().hex[:16], tool=tool, arguments=arguments or {}, chat_id=chat_id
+        )
         with self._lock:
             self._tasks[task.id] = task
             self._evict()

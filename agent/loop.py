@@ -19,6 +19,7 @@ from __future__ import annotations
 import json
 import logging
 from dataclasses import dataclass, field
+from datetime import datetime, timedelta
 from typing import Any
 
 from agent.providers import Completion, LLMError, LLMProvider, ToolCall, build_llm
@@ -45,6 +46,11 @@ Distinguish actions from questions. If you are asked to *do* something you have
 no tool for, say plainly that you cannot. If you are asked a question you can
 simply answer, answer it -- having no tool is not a reason to refuse to think.
 
+Resolve dates yourself. When a tool wants a date, work out the actual calendar
+date from what the user said -- "Thursday", "the day after tomorrow", "next
+week" -- using the current date below, and pass it in the format the tool asks
+for. Never pass the user's words through as if they were a date.
+
 Some tools have irreversible effects and answer with
 `status: confirmation_required` instead of doing the work. When that happens,
 stop and end your turn: state in one sentence exactly what is about to happen,
@@ -54,6 +60,51 @@ with the same arguments plus the `__confirm` token you were given."""
 
 # Said aloud when the model will not stop calling tools.
 GIVE_UP_REPLY = "Sorry, I got stuck working on that. Could you try asking a different way?"
+
+
+# How many days of the lookup table to include. A week covers every weekday
+# name, so "Thursday" is never ambiguous.
+CALENDAR_HORIZON_DAYS = 8
+
+
+def dated_system_prompt(base: str = SYSTEM_PROMPT) -> str:
+    """Stamp the current date and a small date table onto the prompt.
+
+    Computed per turn rather than at import, or a long-running process would
+    still think it was the day it started.
+
+    The table exists because giving the model only today's date makes it do
+    arithmetic, and it gets that wrong: asked for "the day after tomorrow" on
+    the 11th it answered the 14th, while resolving the same phrase correctly in
+    another turn. Inconsistently wrong is worse than always wrong. Listing the
+    dates turns the problem into a lookup.
+    """
+    now = datetime.now().astimezone()
+    today = now.date()
+
+    def stamp(offset: int) -> str:
+        day = today + timedelta(days=offset)
+        return f"{day:%Y-%m-%d} ({day:%A})"
+
+    rows = [
+        f"  yesterday          = {stamp(-1)}",
+        f"  today              = {stamp(0)}",
+        f"  tomorrow           = {stamp(1)}",
+        f"  day after tomorrow = {stamp(2)}",
+        "",
+        "  The next few days by name:",
+    ]
+    rows += [
+        f"    {today + timedelta(days=offset):%A} = {today + timedelta(days=offset):%Y-%m-%d}"
+        for offset in range(1, CALENDAR_HORIZON_DAYS)
+    ]
+
+    return (
+        f"{base}\n\n"
+        f"Current date and time: {now:%A %d %B %Y, %H:%M} ({now.tzname()}).\n"
+        "Use these dates exactly as given; do not calculate them yourself.\n"
+        + "\n".join(rows)
+    )
 
 
 @dataclass
@@ -119,6 +170,7 @@ class AgentLoop:
         user_text: str,
         history: list[dict[str, Any]] | None = None,
         trace: Trace | None = None,
+        chat_id: int | str | None = None,
     ) -> TurnResult:
         """Run one turn to a spoken answer. Never raises."""
         messages: list[dict[str, Any]] = list(history or [])
@@ -133,7 +185,10 @@ class AgentLoop:
             result.iterations = iteration
             try:
                 completion: Completion = self.llm.chat(
-                    messages, tools=specs or None, system=self.system_prompt, trace=trace
+                    messages,
+                    tools=specs or None,
+                    system=dated_system_prompt(self.system_prompt),
+                    trace=trace,
                 )
             except LLMError as exc:
                 log.error("LLM call failed: %s", exc)
@@ -147,7 +202,7 @@ class AgentLoop:
 
             messages.append(self.llm.assistant_message(completion))
             for call in completion.tool_calls:
-                messages.append(self._run_tool(call, result, trace))
+                messages.append(self._run_tool(call, result, trace, chat_id))
 
         # Out of iterations: answer with whatever prose we have rather than
         # leaving the user in silence.
@@ -157,15 +212,19 @@ class AgentLoop:
         return result
 
     def _run_tool(
-        self, call: ToolCall, result: TurnResult, trace: Trace | None
+        self,
+        call: ToolCall,
+        result: TurnResult,
+        trace: Trace | None,
+        chat_id: int | str | None = None,
     ) -> dict[str, Any]:
         log.info("tool %s(%s)", call.name, call.arguments)
 
         if trace is not None:
             with trace.span("tool", tool=call.name):
-                output = self.registry.dispatch(call.name, call.arguments)
+                output = self.registry.dispatch(call.name, call.arguments, chat_id)
         else:
-            output = self.registry.dispatch(call.name, call.arguments)
+            output = self.registry.dispatch(call.name, call.arguments, chat_id)
 
         failed = isinstance(output, dict) and "error" in output
         result.invocations.append(

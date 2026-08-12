@@ -61,6 +61,7 @@ class GroqSTT:
         language: str | None = None,
         prompt: str | None = None,
         trace: Trace | None = None,
+        filename: str | None = None,
     ) -> Transcript:
         """Transcribe a recording.
 
@@ -68,7 +69,8 @@ class GroqSTT:
         a user who taps the mic and says nothing is a normal event in a voice
         UI, not an error the loop should have to catch.
         """
-        payload, filename = self._read(audio)
+        payload, detected = self._read(audio)
+        filename = filename or detected
         if payload is None or len(payload) < MIN_AUDIO_BYTES:
             return Transcript(text="", model=self.model)
 

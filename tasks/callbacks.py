@@ -77,19 +77,25 @@ class TelegramNotifier:
         if self._owns_client:
             self._client.close()
 
-    def notify(self, text: str, with_voice: bool = True) -> Delivery:
+    def notify(
+        self, text: str, with_voice: bool = True, chat_id: int | str | None = None
+    ) -> Delivery:
         """Send a message, and its spoken form when that is possible.
+
+        `chat_id` overrides the configured default so a finished task goes back
+        to whoever asked for it rather than to one hard-coded chat.
 
         Never raises: a notification failure must not fail the callback that
         triggered it, or n8n will retry work that already succeeded.
         """
-        if not self.configured:
+        chat_id = chat_id or self.chat_id
+        if not (self.token and chat_id):
             log.info("Telegram not configured; notification dropped: %s", text[:80])
             return Delivery(error="TELEGRAM_BOT_TOKEN/TELEGRAM_CHAT_ID unset")
 
         delivery = Delivery()
         try:
-            self._post("sendMessage", {"chat_id": self.chat_id, "text": text[:MAX_MESSAGE_CHARS]})
+            self._post("sendMessage", {"chat_id": chat_id, "text": text[:MAX_MESSAGE_CHARS]})
             delivery.text_sent = True
         except (httpx.HTTPError, TelegramError) as exc:
             delivery.error = str(exc)
@@ -97,10 +103,10 @@ class TelegramNotifier:
             return delivery
 
         if with_voice:
-            delivery.audio_method = self._try_voice(text)
+            delivery.audio_method = self._try_voice(text, chat_id)
         return delivery
 
-    def _try_voice(self, text: str) -> str | None:
+    def _try_voice(self, text: str, chat_id: int | str) -> str | None:
         """Best-effort spoken delivery. Returns the method that worked."""
         speech = self.tts.synthesize(text)
         if speech.audio is None:
@@ -116,7 +122,7 @@ class TelegramNotifier:
             try:
                 self._post(
                     method,
-                    data={"chat_id": self.chat_id},
+                    data={"chat_id": chat_id},
                     files={field_name: (filename, speech.audio, "audio/wav")},
                 )
                 return method
