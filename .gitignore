@@ -21,8 +21,9 @@ audio_out/
 # Eval artifacts -- fixtures are committed, results are not
 evals/results/
 
-# Machine-local Claude Code permissions (.claude/settings.json stays tracked)
-.claude/settings.local.json
+# Claude Code working files -- tooling config, not part of the project
+.claude/
+CLAUDE.md
 
 # OS / editor
 .DS_Store
