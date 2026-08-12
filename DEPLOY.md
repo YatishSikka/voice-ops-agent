@@ -35,7 +35,57 @@ stops polling and simply misses your messages.
 Render, Railway and Fly are poor fits here: their free offerings are
 request-driven web services, and this is a long-lived worker.
 
-## Deploying to a VM
+## Google Cloud always-free, start to finish
+
+GCP gives one `e2-micro` free indefinitely, but only in **us-west1,
+us-central1 or us-east1** — any other region is billed. It has 1 GB of RAM,
+which fits n8n and the agent **only with swap**; without it, `npm install` for
+n8n gets OOM-killed and looks like a hang.
+
+Create the VM:
+
+```
+Compute Engine → Create instance
+  Region       us-central1  (or us-west1 / us-east1 — nothing else is free)
+  Machine type e2-micro
+  Boot disk    Ubuntu 24.04 LTS, 30 GB standard persistent disk
+  Firewall     leave both HTTP boxes unchecked — nothing needs inbound
+```
+
+Then, on the instance:
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/YatishSikka/voice-ops-agent/main/scripts/bootstrap_vm.sh | bash
+```
+
+That adds 2 GB of swap, sets the timezone, installs Python and Node 22,
+clones the repo, and installs both services. It prints the three remaining
+steps, all of which need the n8n UI.
+
+Reach that UI by tunnelling — never by opening port 5678:
+
+```bash
+gcloud compute ssh voice-agent -- -L 5678:localhost:5678
+# then browse to http://localhost:5678 on your own machine
+```
+
+The tunnel has a second benefit: n8n sees itself as `http://localhost:5678`,
+which is the redirect URI already registered in your Google Cloud OAuth client,
+so the Calendar credential authorises with no changes.
+
+### What this costs
+
+Nothing, if you stay inside the free tier, but note the edges:
+
+- **Region matters.** An `e2-micro` outside those three regions is billed.
+- **Egress is capped at 1 GB/month** to the internet. This agent sends audio to
+  Groq and voice notes to Telegram — a few hundred KB per exchange, so hundreds
+  of interactions fit comfortably. It is worth knowing the limit exists.
+- **A billing account with a card is required** even for the free tier. Set a
+  budget alert at $1 so a mistake is caught early.
+- **30 GB disk** is the free ceiling; the default 10 GB is plenty here.
+
+## Deploying to a VM (Docker)
 
 ```bash
 # on the server
