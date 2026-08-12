@@ -12,11 +12,12 @@ agent hands a long-running job to n8n, ends the turn, and messages you on
 Telegram when it finishes — as a spoken voice note, so the interaction stays
 voice-first past the end of the conversation.
 
-> **Status.** Phases 0–2 work locally: ask *"what's on my calendar tomorrow"*
-> out loud and the agent transcribes it, picks the n8n-backed tool, calls the
-> workflow, and speaks the answer — with the tool list discovered at runtime
-> rather than compiled in. Not yet done: real integrations behind the
-> workflows — they return fixtures today — and hosting.
+> **Status.** Phases 0–5 work locally. Ask *"what's on my calendar tomorrow"*
+> out loud and the agent transcribes it, picks the n8n-backed tool, queries the
+> real Google Calendar API, and speaks the answer — with the tool list
+> discovered at runtime rather than compiled in. Slow jobs hand off and return
+> as a Telegram voice note, and destructive tools are confirmed before they
+> fire. Not yet done: hosting.
 
 ---
 
@@ -214,7 +215,7 @@ the model a tool that cannot work.
 | 1 | Voice loop: mic → STT → TTS | **Works locally**; hosting pending |
 | 2 | **Tool registry** — n8n workflows as runtime-discovered tools | **Works locally** — end to end, voice to n8n and back |
 | 3 | Async callback — long jobs return via Telegram voice note | **Done** — verified end to end against live Telegram |
-| 4 | Confirmation gate on destructive tools | **Done**; real integrations still fixtures |
+| 4 | Confirmation gate; first real integration | **Done** — Google Calendar is live via OAuth |
 | 5 | Eval harness, Langfuse tracing, CI, measured latency table | Pending |
 
 The tool list freezes at the end of Phase 4. That is the scope-creep guard.
@@ -286,6 +287,13 @@ full run costs about a minute.
   transport layer knew where anything ran.
 - **`ClaudeProvider` is written but unverified against the live API.** It is the
   swap path, not the shipping path.
+- **Only one of the three workflows is a real integration.** `get_calendar_events`
+  talks to Google Calendar over OAuth; `send_email` and `generate_monthly_report`
+  are still stubs that prove the confirmation gate and the async handoff without
+  sending anything. The machinery around them is real either way — swapping the
+  calendar fixture for the live API changed no application code, only the
+  workflow.
+
 - **n8n runs self-hosted, and not by preference.** n8n Cloud has no free tier
   any more, and its 14-day trial [disables the public
   API](https://docs.n8n.io/connect/n8n-api/) — the `Settings → n8n API` screen

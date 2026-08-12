@@ -1,12 +1,34 @@
 {
   "active": true,
   "connections": {
+    "Day range": {
+      "main": [
+        [
+          {
+            "index": 0,
+            "node": "Google Calendar",
+            "type": "main"
+          }
+        ]
+      ]
+    },
+    "Google Calendar": {
+      "main": [
+        [
+          {
+            "index": 0,
+            "node": "Format",
+            "type": "main"
+          }
+        ]
+      ]
+    },
     "Webhook": {
       "main": [
         [
           {
             "index": 0,
-            "node": "Events",
+            "node": "Day range",
             "type": "main"
           }
         ]
@@ -14,7 +36,7 @@
     }
   },
   "description": "Look up the calendar events scheduled for a given day.",
-  "id": "55qpNBPEpArC12WF",
+  "id": "JpYPZs2ShgAvKWpP",
   "isArchived": false,
   "meta": null,
   "name": "Get Calendar Events",
@@ -36,22 +58,67 @@
       ],
       "type": "n8n-nodes-base.webhook",
       "typeVersion": 2,
-      "webhookId": "e62eca5d-f4a1-4bce-969a-9ebeea7ac456"
+      "webhookId": "75b6c8cd-fe4e-4512-bfbf-a53f756d3041"
     },
     {
-      "id": "bbbbbbbb-2222-4222-8222-222222222222",
-      "name": "Events",
+      "id": "aaaaaaaa-2222-4222-8222-222222222222",
+      "name": "Day range",
       "parameters": {
-        "jsonOutput": "={{ JSON.stringify({ day: $json.body.day, events: [\"09:00 standup\", \"14:00 design review\"] }) }}",
-        "mode": "raw",
-        "options": {}
+        "jsCode": "\nconst body = $input.first().json.body || {};\nconst day = String(body.day || 'today').toLowerCase();\n\nconst start = new Date();\nif (day.includes('tomorrow')) start.setDate(start.getDate() + 1);\nelse if (day.includes('yesterday')) start.setDate(start.getDate() - 1);\nstart.setHours(0, 0, 0, 0);\n\nconst end = new Date(start);\nend.setDate(end.getDate() + 1);\n\nreturn [{ json: { day, timeMin: start.toISOString(), timeMax: end.toISOString() } }];\n"
       },
       "position": [
         220,
         0
       ],
-      "type": "n8n-nodes-base.set",
-      "typeVersion": 3.4
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2
+    },
+    {
+      "alwaysOutputData": true,
+      "credentials": {
+        "googleCalendarOAuth2Api": {
+          "id": "zdBebZzLkorbJmzI",
+          "name": "Google Calendar account"
+        }
+      },
+      "id": "aaaaaaaa-3333-4333-8333-333333333333",
+      "name": "Google Calendar",
+      "parameters": {
+        "calendar": {
+          "__rl": true,
+          "cachedResultName": "sikkayatish1@gmail.com",
+          "mode": "list",
+          "value": "sikkayatish1@gmail.com"
+        },
+        "operation": "getAll",
+        "options": {
+          "orderBy": "startTime",
+          "singleEvents": true,
+          "timeMax": "={{ $json.timeMax }}",
+          "timeMin": "={{ $json.timeMin }}"
+        },
+        "resource": "event",
+        "returnAll": true
+      },
+      "position": [
+        440,
+        0
+      ],
+      "type": "n8n-nodes-base.googleCalendar",
+      "typeVersion": 1.3
+    },
+    {
+      "id": "aaaaaaaa-4444-4444-8444-444444444444",
+      "name": "Format",
+      "parameters": {
+        "jsCode": "\nconst day = $('Day range').first().json.day;\n\nconst events = $input.all()\n  .filter(i => i.json && (i.json.summary || i.json.start))\n  .map(i => {\n    const e = i.json;\n    const startsAt = e.start?.dateTime || e.start?.date;\n    const when = e.start?.dateTime\n      ? new Date(e.start.dateTime).toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' })\n      : 'all day';\n    return `${when} ${e.summary || '(untitled)'}`;\n  });\n\nreturn [{ json: { day, count: events.length, events } }];\n"
+      },
+      "position": [
+        660,
+        0
+      ],
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2
     }
   ],
   "settings": {
