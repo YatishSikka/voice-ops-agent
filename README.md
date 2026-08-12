@@ -260,30 +260,3 @@ with test meetings.
 Runs are serial and paced. Retry backoff happens inside the timed span, so a
 rate-limited run would report the backoff as latency rather than measuring the
 agent.
-
-## Honest limitations
-
-- **Latency is ~2.1s voice-to-voice.** A measured tool-calling turn breaks down
-  as STT ~840 ms · LLM ~480 ms · tool ~65 ms · TTS ~700 ms. Browser and mobile
-  capture plus HTTP round-trip STT is most of the gap from the ~900 ms a
-  telephony agent manages; STT is the hop to attack first.
-
-- **Groq's daily token ceiling bites before the per-minute one.** 100K tokens a
-  day, which a day of development and two full eval runs will exhaust. The
-  agent says so and recovers on its own; the transport distinguishes a daily
-  quota from a per-minute limit, because retrying the former cannot succeed.
-
-- **Session state is in-memory.** A restart loses pending background tasks —
-  the workflow still completes in n8n, but the notification is lost. n8n holds
-  the durable record by design.
-
-- **The bot is allowlisted to one chat.** A Telegram bot username is public and
-  these tools read and write a real calendar, so it refuses everyone else. It
-  fails closed: unconfigured means nobody, not everybody.
-
-- **`ClaudeProvider` is written but unverified against the live API.** It is the
-  swap path, not the shipping path.
-
-- **Whisper is scored on a small fixture set.** 0% WER over four clips of clear,
-  synthesised speech in a quiet room. Real accents, noise and crosstalk are not
-  represented, and that number would not survive them.
