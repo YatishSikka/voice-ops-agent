@@ -169,11 +169,22 @@ an unverified gate is an unresolved one.
 
 ## Deploying
 
-The agent needs a machine that keeps a process alive, and nothing else — no
-public URL, no tunnel, no inbound port, because Telegram is polled outbound.
-`docker compose up -d` runs the agent and n8n together; see **[DEPLOY.md](DEPLOY.md)**
-for hosts with a genuinely free always-on tier, a Docker-free systemd setup,
-and what the common failures look like.
+**This runs locally by design, not because it cannot be hosted.** The agent
+needs a machine that keeps a process alive and nothing else — no public URL, no
+tunnel, no inbound port, since Telegram is polled outbound. `docker compose up -d`
+brings up the agent and n8n together, and **[DEPLOY.md](DEPLOY.md)** covers a
+Docker-free systemd setup, a one-command VM bootstrap, and a workflow importer
+that rebuilds the tool set on a fresh instance.
+
+What it is not hosted on is instructive. Hugging Face made Gradio Spaces
+PRO-only mid-build. Render, Railway and Fly offer request-driven web tiers that
+sleep, and a sleeping bot silently misses messages. Google Cloud's always-free
+`e2-micro` excludes the external IPv4 address it needs, which puts it at about
+$3.65/month. Oracle's Always Free tier does include the IP, but reclaims
+instances idle for seven days — the exact profile of a bot waiting on a long
+poll. None of that is a blocker for a personal assistant that runs on the
+machine you already own; it is only a blocker for a public demo, which this
+deliberately is not, because the tools read and write a real calendar.
 
 ## Development
 
