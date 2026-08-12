@@ -1,4 +1,4 @@
-"""Per-chat conversation state.
+"""Per-chat conversation state, and who is allowed to talk to the bot.
 
 One Telegram chat is one ongoing conversation, so history is keyed by chat id
 rather than held globally -- otherwise two people talking to the same bot would
@@ -15,6 +15,8 @@ import threading
 import time
 from dataclasses import dataclass, field
 from typing import Any
+
+from config import config
 
 # Roughly a dozen exchanges. Long enough for follow-ups like "what about
 # Friday?", short enough that a long chat does not creep toward the token limit.
@@ -99,3 +101,22 @@ class SessionStore:
 
 
 sessions = SessionStore()
+
+
+def is_allowed(chat_id: int | str) -> bool:
+    """Whether this chat may use the agent.
+
+    A Telegram bot username is public, so anyone who finds it can message it.
+    The tools here read and write a real calendar, which makes an open bot a
+    data leak rather than a demo. `TELEGRAM_ALLOWED_CHATS` is a comma-separated
+    allowlist; unset means only `TELEGRAM_CHAT_ID`, and a bot with neither
+    refuses everyone rather than serving everyone.
+    """
+    allowed = {
+        chat.strip()
+        for chat in (config.telegram_allowed_chats or "").split(",")
+        if chat.strip()
+    }
+    if not allowed and config.telegram_chat_id:
+        allowed = {str(config.telegram_chat_id)}
+    return str(chat_id) in allowed

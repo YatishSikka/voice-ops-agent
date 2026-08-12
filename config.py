@@ -43,6 +43,9 @@ class Config:
 
     telegram_bot_token: str | None
     telegram_chat_id: str | None
+    # Comma-separated chat ids allowed to use the bot. A bot username is
+    # public, and these tools touch a real calendar, so an open bot leaks data.
+    telegram_allowed_chats: str | None
 
     # Where n8n should POST when a long-running workflow finishes. Must be
     # reachable from n8n, so a loopback address only works when both run on
@@ -79,6 +82,7 @@ class Config:
             n8n_tool_tag=_env("N8N_TOOL_TAG", "agent-tool"),
             telegram_bot_token=_env("TELEGRAM_BOT_TOKEN"),
             telegram_chat_id=_env("TELEGRAM_CHAT_ID"),
+            telegram_allowed_chats=_env("TELEGRAM_ALLOWED_CHATS"),
             public_base_url=(_env("PUBLIC_BASE_URL", "http://127.0.0.1:7860") or "").rstrip("/")
             or None,
             hf_token=_env("HF_TOKEN"),

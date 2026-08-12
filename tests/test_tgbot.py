@@ -191,3 +191,44 @@ def test_a_tail_with_no_clean_boundary_starts_over():
     history = [{"role": "assistant", "content": "x"}] * (MAX_HISTORY_MESSAGES + 5)
 
     assert trim_history(history) == []
+
+
+# -- access control ---------------------------------------------------------
+
+
+def test_only_allowlisted_chats_are_served(monkeypatch):
+    """A bot username is public; these tools touch a real calendar."""
+    from types import SimpleNamespace
+
+    import tgbot.session as module
+
+    monkeypatch.setattr(module, "config", SimpleNamespace(
+        telegram_allowed_chats="111,222", telegram_chat_id="999"))
+
+    assert module.is_allowed(111) is True
+    assert module.is_allowed("222") is True
+    assert module.is_allowed(333) is False
+
+
+def test_the_allowlist_defaults_to_the_configured_chat(monkeypatch):
+    from types import SimpleNamespace
+
+    import tgbot.session as module
+
+    monkeypatch.setattr(module, "config", SimpleNamespace(
+        telegram_allowed_chats=None, telegram_chat_id="999"))
+
+    assert module.is_allowed(999) is True
+    assert module.is_allowed(1) is False
+
+
+def test_with_nothing_configured_the_bot_serves_nobody(monkeypatch):
+    """Fail closed: an unconfigured bot must not be an open one."""
+    from types import SimpleNamespace
+
+    import tgbot.session as module
+
+    monkeypatch.setattr(module, "config", SimpleNamespace(
+        telegram_allowed_chats=None, telegram_chat_id=None))
+
+    assert module.is_allowed(999) is False

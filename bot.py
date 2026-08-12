@@ -33,7 +33,7 @@ from agent.tts import build_tts
 from callback_api import api
 from config import config
 from tgbot.client import Incoming, TelegramClient, TelegramError
-from tgbot.session import sessions
+from tgbot.session import is_allowed, sessions
 
 logging.basicConfig(level=logging.INFO, format="%(levelname)s %(name)s: %(message)s")
 log = logging.getLogger("bot")
@@ -90,6 +90,14 @@ class VoiceAgentBot:
     # -- one message --------------------------------------------------------
 
     def handle(self, message: Incoming) -> None:
+        if not is_allowed(message.chat_id):
+            # Say something rather than time out, but nothing about what the
+            # bot does or who owns it.
+            log.warning(
+                "Refused chat %s (@%s)", message.chat_id, message.sender or "?"
+            )
+            return self._say(message.chat_id, "This assistant is private.")
+
         if message.is_command:
             return self.handle_command(message)
 
