@@ -246,7 +246,16 @@ Restraint is scored deliberately: a third of the suite expects **no** tool call,
 because an agent that reaches for a tool on "thanks, that's all" is as broken as
 one that misses a real request.
 
-Two defects came out of the first run, both invisible to unit tests:
+A third defect came from wiring the real calendar in, and is the kind only live
+data exposes: n8n's Google Calendar node moved `timeMin`/`timeMax` out of
+`options` and into top-level node parameters at typeVersion 1.3. n8n resolves
+collection parameters against the node's declared schema, so the old keys were
+**silently dropped** — no error, no warning, just an unfiltered query returning
+the entire calendar. Every day looked identical, and with an empty calendar it
+had looked perfect. Fixed by reading the node's source rather than guessing at
+the parameter shape.
+
+Two defects came out of the first eval run, both invisible to unit tests:
 
 - **`tool_use_failed`** — Llama on Groq intermittently emits a tool call in
   Llama's text format (`<function=name{...}</function>`) rather than structured
@@ -288,7 +297,7 @@ full run costs about a minute.
 - **`ClaudeProvider` is written but unverified against the live API.** It is the
   swap path, not the shipping path.
 - **Only one of the three workflows is a real integration.** `get_calendar_events`
-  talks to Google Calendar over OAuth; `send_email` and `generate_monthly_report`
+  reads a real Google Calendar over OAuth, filtered to the requested day; `send_email` and `generate_monthly_report`
   are still stubs that prove the confirmation gate and the async handoff without
   sending anything. The machinery around them is real either way — swapping the
   calendar fixture for the live API changed no application code, only the

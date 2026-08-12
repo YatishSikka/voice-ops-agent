@@ -92,13 +92,12 @@
         },
         "operation": "getAll",
         "options": {
-          "orderBy": "startTime",
-          "singleEvents": true,
-          "timeMax": "={{ $json.timeMax }}",
-          "timeMin": "={{ $json.timeMin }}"
+          "orderBy": "startTime"
         },
         "resource": "event",
-        "returnAll": true
+        "returnAll": true,
+        "timeMax": "={{ $json.timeMax }}",
+        "timeMin": "={{ $json.timeMin }}"
       },
       "position": [
         440,
