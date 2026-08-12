@@ -58,9 +58,7 @@ Telegram voice message
 
 **Why Telegram and not a web page.** It is already on the phone, it records and
 plays voice natively, and `getUpdates` long polling means the bot reaches *out*
-to Telegram — no inbound port, no public URL, no tunnel, and no hosting tier
-that has to permit web apps. That last point is not incidental: Hugging Face
-made Gradio Spaces paid mid-build, and this design makes the question moot.
+to Telegram — so nothing has to accept an inbound connection.
 
 
 `tools/registry.py` and `tools/schema.py` are the project. Everything else is
@@ -152,16 +150,12 @@ Verified on n8n 2.33.7 with Node 24, despite n8n officially targeting Node
 20/22. A `Failed to refresh MCP registry` line on startup is harmless — it is
 n8n fetching its own public server catalogue, unrelated to this project.
 
-Hosting the app elsewhere means giving n8n a public address — a Cloudflare
-Tunnel is enough, and only `N8N_BASE_URL` changes.
-
-`preflight.py` is a gate, not a formality. Three things can invalidate the whole
-design, so it verifies all three and prints a pass/fail table:
+`preflight.py` is a gate, not a formality. It verifies the services the agent
+cannot work without, and prints a pass/fail table:
 
 | Gate | What it proves | If it fails |
 |---|---|---|
-| Hugging Face | Token valid, email verified, account >30 days | Kept as a gate because the account checks still gate ZeroGPU; hosting itself has since moved off Spaces (see Limitations) |
-| n8n | `GET /api/v1/workflows` answers, and tag filtering works | The registry has nothing to read — switch to self-hosted `npx n8n` immediately |
+| n8n | `GET /api/v1/workflows` answers, and tag filtering works | The registry has nothing to read, so the agent has no tools |
 | Groq | STT, LLM **and** TTS each accept a real call | A listed model is not a callable one; a gated TTS drops to text |
 
 It exits non-zero on failure and takes `--json` for CI. A `SKIP` is not a pass —
@@ -169,22 +163,16 @@ an unverified gate is an unresolved one.
 
 ## Deploying
 
-**This runs locally by design, not because it cannot be hosted.** The agent
-needs a machine that keeps a process alive and nothing else — no public URL, no
-tunnel, no inbound port, since Telegram is polled outbound. `docker compose up -d`
-brings up the agent and n8n together, and **[DEPLOY.md](DEPLOY.md)** covers a
-Docker-free systemd setup, a one-command VM bootstrap, and a workflow importer
-that rebuilds the tool set on a fresh instance.
+The agent needs a machine that keeps a process alive and nothing else — no
+public URL, no tunnel and no inbound port, because Telegram is polled outbound.
 
-What it is not hosted on is instructive. Hugging Face made Gradio Spaces
-PRO-only mid-build. Render, Railway and Fly offer request-driven web tiers that
-sleep, and a sleeping bot silently misses messages. Google Cloud's always-free
-`e2-micro` excludes the external IPv4 address it needs, which puts it at about
-$3.65/month. Oracle's Always Free tier does include the IP, but reclaims
-instances idle for seven days — the exact profile of a bot waiting on a long
-poll. None of that is a blocker for a personal assistant that runs on the
-machine you already own; it is only a blocker for a public demo, which this
-deliberately is not, because the tools read and write a real calendar.
+```bash
+docker compose up -d          # agent + n8n together
+```
+
+**[DEPLOY.md](DEPLOY.md)** covers a Docker-free systemd setup for small VMs, a
+one-command bootstrap script, and `scripts/import_workflows.py`, which rebuilds
+the whole tool set on a fresh n8n instance and rewires it to local credentials.
 
 ## Development
 
@@ -258,7 +246,7 @@ the model a tool that cannot work.
 | 4 | Confirmation gate; first real integration | **Done** — Google Calendar is live via OAuth |
 | 5 | Eval harness, CI, measured latency table | **Done** (Langfuse skipped) |
 
-| 6 | Telegram as the interface, replacing the web UI | **Done** |
+| 6 | Telegram as the interface | **Done** |
 
 The Gradio app in `app.py` still runs (`python app.py`) and is useful for
 debugging a turn without a phone, but Telegram is the product.
@@ -314,49 +302,30 @@ full run costs about a minute.
 
 ## Honest limitations
 
-- **Latency is ~2.1s voice-to-voice, against an original target of 1.5s.** The
-  1.5s figure was written before the agent existed. A measured tool-calling
-  turn breaks down as **STT ~840 ms · LLM ~480 ms · tool ~65 ms · TTS ~700 ms
-  = ~2.1 s**, so the target moved to 2.5s to match what the architecture
-  actually costs. Browser capture plus HTTP round-trip STT is most of the gap
-  from a ~900ms telephony agent, and STT is the hop to attack first. These are
-  single runs on one fixture, not a distribution; the p50/p95 table stays empty
-  until the eval harness produces one.
-- **Free-tier ceilings are real, and the daily one bites first.** Groq allows
-  100K tokens a day, which a day of development and two full eval runs will
-  exhaust — at which point the agent says so and stops until it resets. The
-  per-minute limit is the one people expect; the daily cap is the one that ends
-  your afternoon. The transport tells them apart, because retrying a daily
-  quota just spends 90 seconds per call to learn nothing.
-- **The host spins down when idle**, so the first request after a quiet period
-  pays roughly a minute of cold start.
-- **No persistent disk on the free host.** Durable state lives in n8n; session
-  state is in-memory by design.
+- **Latency is ~2.1s voice-to-voice.** A measured tool-calling turn breaks down
+  as STT ~840 ms · LLM ~480 ms · tool ~65 ms · TTS ~700 ms. Browser and mobile
+  capture plus HTTP round-trip STT is most of the gap from the ~900 ms a
+  telephony agent manages; STT is the hop to attack first.
 
-- **Two free tiers disappeared underneath this plan, mid-build.** n8n Cloud's
-  trial turned out to disable the public API, and Hugging Face made Gradio
-  Spaces PRO-only — only Static Spaces remain free, and a Gradio app is not
-  static. Both were verified assumptions when the plan was written. The lesson
-  worth keeping: check that a free tier still exists *and* still includes the
-  specific feature you need, then design so the host is swappable. Here it
-  cost two `.env` values and a `render.yaml`, because nothing above the
-  transport layer knew where anything ran.
+- **Groq's daily token ceiling bites before the per-minute one.** 100K tokens a
+  day, which a day of development and two full eval runs will exhaust. The
+  agent says so and recovers on its own; the transport distinguishes a daily
+  quota from a per-minute limit, because retrying the former cannot succeed.
+
+- **Session state is in-memory.** A restart loses pending background tasks —
+  the workflow still completes in n8n, but the notification is lost. n8n holds
+  the durable record by design.
+
+- **The bot is allowlisted to one chat.** A Telegram bot username is public and
+  these tools read and write a real calendar, so it refuses everyone else. It
+  fails closed: unconfigured means nobody, not everybody.
+
 - **`ClaudeProvider` is written but unverified against the live API.** It is the
   swap path, not the shipping path.
-- **Only one of the three workflows is a real integration.** `get_calendar_events`
-  reads a real Google Calendar over OAuth, filtered to the requested day; `send_email` and `generate_monthly_report`
-  are still stubs that prove the confirmation gate and the async handoff without
-  sending anything. The machinery around them is real either way — swapping the
-  calendar fixture for the live API changed no application code, only the
-  workflow.
 
-- **n8n runs self-hosted, and not by preference.** n8n Cloud has no free tier
-  any more, and its 14-day trial [disables the public
-  API](https://docs.n8n.io/connect/n8n-api/) — the `Settings → n8n API` screen
-  is hidden and `/api/v1/*` is switched off server-side. Since runtime workflow
-  discovery *is* this project, Cloud is unusable below the paid Starter tier.
-  The community edition has the same API for free, so the agent talks to a
-  self-hosted instance. Preflight's gate 2 exists to catch precisely this.
+- **Whisper is scored on a small fixture set.** 0% WER over four clips of clear,
+  synthesised speech in a quiet room. Real accents, noise and crosstalk are not
+  represented, and that number would not survive them.
 
 ## License
 
