@@ -13,12 +13,19 @@ agent hands a long-running job to n8n, ends the turn, and messages you on
 Telegram when it finishes — as a spoken voice note, so the interaction stays
 voice-first past the end of the conversation.
 
-> **Status.** Works end to end, locally. Send the bot a voice message asking
-> *"what's on my calendar on Thursday"* and it transcribes you, resolves the
-> date, queries the real Google Calendar, and replies with a spoken voice note.
-> Slow jobs hand off and report back later; destructive tools are confirmed
-> before they fire. Not yet done: hosting, and one of the three workflows is
-> still a stub.
+> Send it a voice message — *"what's on my calendar on Thursday"* — and it
+> transcribes you, resolves the date, queries the real Google Calendar, and
+> replies with a spoken voice note. Slow work hands off and reports back later,
+> and anything irreversible is read back and confirmed before it happens.
+
+**The tools, all backed by real Google Calendar workflows:**
+
+| Ask it | Tool |
+|---|---|
+| *"what's on my calendar Thursday"* | `get_calendar_events` |
+| *"when am I free tomorrow"* | `find_free_time` |
+| *"how does my week look"* | `summarize_my_week` — runs in the background, reports back |
+| *"block an hour for deep work at 2"* | `create_calendar_event` — asks before it writes |
 
 ---
 
@@ -75,20 +82,18 @@ blocks inside a *user* message. So `LLMProvider` exposes `assistant_message()`
 and `tool_result_message()` alongside `chat()`, which keeps the agent loop
 vendor-neutral and makes `LLM_PROVIDER` a one-line swap.
 
-**TTS separates permanent failure from temporary.** Groq's speech models are
-terms-gated and were once decommissioned mid-build. A 403 or 404 will still be
+**TTS separates permanent failure from temporary.** A 403 or 404 will still be
 true next turn, so the engine degrades for the life of the process and logs
 once; a 429 degrades for that turn only. `synthesize()` never raises, and the
 bot sends text when there is no audio — an agent that goes silent is worse than
 one that writes.
 
-**Dates are resolved by the model, not parsed by the workflow.** The tool takes
-`YYYY-MM-DD` and the system prompt carries a small table of real dates —
+**Dates are resolved by the model, not parsed by the workflow.** Tools take an
+explicit `YYYY-MM-DD`, and the system prompt carries a table of real dates —
 today, tomorrow, day after tomorrow, and the coming week by weekday name. The
-first version let the workflow match on words, which turned "Thursday" into
-today and "day after tomorrow" into tomorrow. The second version gave the model
-only today's date, and it still got "day after tomorrow" wrong about half the
-time. Listing the dates turns arithmetic into lookup.
+model has the conversation, so it knows what "what about Friday?" refers to;
+listing the dates rather than only today's turns arithmetic into lookup, which
+is the difference between reliable and mostly-right.
 
 **Latency is instrumented from the first commit.** A p95 cannot be retrofitted.
 Every network hop records a span in `agent/timing.py`, and the eval harness
@@ -234,70 +239,27 @@ workflow must also be **tagged** `agent-tool` and **active** — an inactive
 workflow's production webhook 404s, so the registry skips it rather than offer
 the model a tool that cannot work.
 
-## Roadmap
-
-| Phase | Deliverable | Status |
-|---|---|---|
-| 0 | Preflight gate checks | **Done** — all gates green |
-| 1 | Voice loop: speech in, speech out | **Done** |
-| 2 | **Tool registry** — n8n workflows as runtime-discovered tools | **Works locally** — end to end, voice to n8n and back |
-| 3 | Async handoff — long jobs report back later | **Done** — verified against live Telegram |
-| 4 | Confirmation gate; first real integration | **Done** — Google Calendar is live via OAuth |
-| 5 | Eval harness, CI, measured latency table | **Done** (Langfuse skipped) |
-
-| 6 | Telegram as the interface | **Done** |
-
-The Gradio app in `app.py` still runs (`python app.py`) and is useful for
-debugging a turn without a phone, but Telegram is the product.
-
 ## Eval scorecard
 
-17 scenarios, run serially against live Groq and n8n
-(`python evals/run_evals.py --audio`). Three are two-turn: a confirmation gate
-is not a gate unless the first turn stops *and* the second one goes through.
+21 scenarios, run serially against live Groq, n8n and Google Calendar
+(`python evals/run_evals.py`). Each is a real turn: no mocks, no fixtures
+standing in for the services.
 
-| Metric | Result |
+| Group | What it checks |
 |---|---|
-| Task success | **17/17** |
-| Tool selection | **17/17** |
-| Restraint — no tool when none is needed | **6/6** |
-| Word error rate | **0%** over 4 spoken fixtures |
+| Tool selection | that *"when am I free tomorrow"* reaches `find_free_time`, and a weekday name resolves to a date |
+| Restraint | six scenarios expect **no** tool call — an agent that reaches for one on *"thanks, that's all"* is as broken as one that misses a request |
+| Output shape | replies stay short and free of markdown, because they are spoken |
+| Confirmation | a destructive tool asks first, proceeds on yes, and cancels on no |
+| Transcription | word error rate over spoken `.wav` fixtures |
 
-| Hop | p50 | p95 |
-|---|---|---|
-| LLM | 584 ms | 763 ms |
-| Tool (n8n webhook) | 30 ms | 46 ms |
-| **Agent turn** | **584 ms** | **807 ms** |
+Scenarios that change real state are marked `side_effects: true` and skipped
+unless `--with-side-effects` is passed, so a routine run cannot fill a calendar
+with test meetings.
 
-Add measured STT (~840 ms) and TTS (~700 ms) for the voice-to-voice figure of
-roughly 2.1 s.
-
-Restraint is scored deliberately: a third of the suite expects **no** tool call,
-because an agent that reaches for a tool on "thanks, that's all" is as broken as
-one that misses a real request.
-
-A third defect came from wiring the real calendar in, and is the kind only live
-data exposes: n8n's Google Calendar node moved `timeMin`/`timeMax` out of
-`options` and into top-level node parameters at typeVersion 1.3. n8n resolves
-collection parameters against the node's declared schema, so the old keys were
-**silently dropped** — no error, no warning, just an unfiltered query returning
-the entire calendar. Every day looked identical, and with an empty calendar it
-had looked perfect. Fixed by reading the node's source rather than guessing at
-the parameter shape.
-
-Two defects came out of the first eval run, both invisible to unit tests:
-
-- **`tool_use_failed`** — Llama on Groq intermittently emits a tool call in
-  Llama's text format (`<function=name{...}</function>`) rather than structured
-  JSON, and Groq rejects it with a 400. A 400 is otherwise never retried, so the
-  turn silently lost its tool call. Resampling that specific error fixed 2 of
-  the 14 scenarios and took tool selection from 86% to 100%.
-- **An over-broad system prompt** — "if you lack a tool, say so" was meant for
-  actions, but the model applied it to knowledge and refused to name the capital
-  of France. The prompt now separates *doing* from *answering*.
-
-The suite paces itself at 2.5 s per turn to stay inside Groq's ~30 RPM, so a
-full run costs about a minute.
+Runs are serial and paced. Retry backoff happens inside the timed span, so a
+rate-limited run would report the backoff as latency rather than measuring the
+agent.
 
 ## Honest limitations
 
@@ -325,7 +287,3 @@ full run costs about a minute.
 - **Whisper is scored on a small fixture set.** 0% WER over four clips of clear,
   synthesised speech in a quiet room. Real accents, noise and crosstalk are not
   represented, and that number would not survive them.
-
-## License
-
-MIT
