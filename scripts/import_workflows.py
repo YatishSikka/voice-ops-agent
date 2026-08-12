@@ -25,9 +25,9 @@ from typing import Any
 ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT))
 
-import httpx  # noqa: E402
+import httpx
 
-from config import config  # noqa: E402
+from config import config
 
 WORKFLOW_DIR = ROOT / "n8n" / "workflows"
 

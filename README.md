@@ -178,8 +178,7 @@ the whole tool set on a fresh n8n instance and rewires it to local credentials.
 
 ```bash
 pip install -r requirements-dev.txt
-pytest -q
-ruff check .
+bash scripts/check.sh     # exactly what CI runs, failing the way CI fails
 ```
 
 ## Configuration
