@@ -27,8 +27,8 @@ stops polling and simply misses your messages.
 
 | Host | Free tier | Notes |
 |---|---|---|
-| **Oracle Cloud Always Free** | 4 ARM cores / 24 GB, or 2 AMD micro VMs | Genuinely free indefinitely. Best fit. ARM capacity is often unavailable in popular regions — try another region. |
-| **Google Cloud Always Free** | 1 × `e2-micro`, us-west1/central1/east1 | 1 GB RAM: workable but tight with both containers. |
+| **Google Cloud Always Free** | 1 × `e2-micro`, us-west1/central1/east1 | **Recommended.** 1 GB RAM is enough with swap, availability is reliable, and idle instances are not reclaimed. |
+| **Oracle Cloud Always Free** | 2 ARM cores / 12 GB, or 2 AMD micro VMs | Far more headroom, but reclaims instances idle for 7 days (CPU/network/memory each under 10% at p95) — which is precisely what a polling bot looks like. ARM capacity is also frequently unavailable, and the ARM allowance was halved in 2026. |
 | **Any cheap VPS** | ~$4/month | Hetzner, Vultr, DigitalOcean. Worth it if free tiers frustrate you. |
 | **Your own machine** | free | Fine, but the agent is only reachable while it is powered on. |
 
@@ -78,9 +78,12 @@ so the Calendar credential authorises with no changes.
 Nothing, if you stay inside the free tier, but note the edges:
 
 - **Region matters.** An `e2-micro` outside those three regions is billed.
-- **Egress is capped at 1 GB/month** to the internet. This agent sends audio to
-  Groq and voice notes to Telegram — a few hundred KB per exchange, so hundreds
-  of interactions fit comfortably. It is worth knowing the limit exists.
+- **Egress is capped**, and sources disagree on the figure (1 GB/month under
+  the long-standing terms, 200 GB under the Standard network tier in US
+  regions). Check the current docs if it matters to you. It does not matter
+  much here: the agent sends audio to Groq and voice notes to Telegram, a few
+  hundred KB per exchange, so even the smaller figure allows hundreds of
+  interactions a month.
 - **A billing account with a card is required** even for the free tier. Set a
   budget alert at $1 so a mistake is caught early.
 - **30 GB disk** is the free ceiling; the default 10 GB is plenty here.
