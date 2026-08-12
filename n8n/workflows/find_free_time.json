@@ -1,0 +1,130 @@
+{
+  "active": true,
+  "connections": {
+    "Calendar": {
+      "main": [
+        [
+          {
+            "index": 0,
+            "node": "Slots",
+            "type": "main"
+          }
+        ]
+      ]
+    },
+    "Webhook": {
+      "main": [
+        [
+          {
+            "index": 0,
+            "node": "Window",
+            "type": "main"
+          }
+        ]
+      ]
+    },
+    "Window": {
+      "main": [
+        [
+          {
+            "index": 0,
+            "node": "Calendar",
+            "type": "main"
+          }
+        ]
+      ]
+    }
+  },
+  "description": "Find the gaps in a day when nothing is scheduled, so you can see when you are actually free.",
+  "id": "mjzWClXGxPniQzMN",
+  "isArchived": false,
+  "meta": null,
+  "name": "Find Free Time",
+  "nodeGroups": [],
+  "nodes": [
+    {
+      "id": "free-tim-1111-4111-8111-111111111111",
+      "name": "Webhook",
+      "notes": "{\n  \"type\": \"object\",\n  \"properties\": {\n    \"date\": {\n      \"type\": \"string\",\n      \"description\": \"The date to check, as YYYY-MM-DD.\"\n    },\n    \"from_hour\": {\n      \"type\": \"integer\",\n      \"description\": \"Start of the working window, 24h. Defaults to 9.\"\n    },\n    \"to_hour\": {\n      \"type\": \"integer\",\n      \"description\": \"End of the working window, 24h. Defaults to 18.\"\n    }\n  },\n  \"required\": [\n    \"date\"\n  ]\n}",
+      "parameters": {
+        "httpMethod": "POST",
+        "options": {},
+        "path": "free-time",
+        "responseMode": "lastNode"
+      },
+      "position": [
+        0,
+        0
+      ],
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "webhookId": "0964a744-8159-48c5-9e6c-e87663c3d1bc"
+    },
+    {
+      "id": "Windowbb-2222-4222-8222-222222222222",
+      "name": "Window",
+      "parameters": {
+        "jsCode": "\nconst b = $input.first().json.body || {};\nconst m = String(b.date || '').match(/^(\\d{4})-(\\d{1,2})-(\\d{1,2})$/);\nconst now = new Date();\nconst d = m ? new Date(+m[1], +m[2]-1, +m[3]) : new Date(now.getFullYear(), now.getMonth(), now.getDate());\nconst openHour  = Number(b.from_hour ?? 9);\nconst closeHour = Number(b.to_hour ?? 18);\nconst start = new Date(d); start.setHours(0,0,0,0);\nconst end = new Date(start); end.setDate(end.getDate()+1);\nreturn [{ json: { label: start.toLocaleDateString('en-GB',{weekday:'long',day:'numeric',month:'long'}),\n                  openHour, closeHour,\n                  timeMin: start.toISOString(), timeMax: end.toISOString() } }];\n"
+      },
+      "position": [
+        200,
+        0
+      ],
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2
+    },
+    {
+      "alwaysOutputData": true,
+      "credentials": {
+        "googleCalendarOAuth2Api": {
+          "id": "zdBebZzLkorbJmzI",
+          "name": "Google Calendar account"
+        }
+      },
+      "id": "cccccccc-3333-4333-8333-333333333333",
+      "name": "Calendar",
+      "parameters": {
+        "calendar": {
+          "__rl": true,
+          "cachedResultName": "sikkayatish1@gmail.com",
+          "mode": "list",
+          "value": "sikkayatish1@gmail.com"
+        },
+        "operation": "getAll",
+        "options": {
+          "orderBy": "startTime"
+        },
+        "resource": "event",
+        "returnAll": true,
+        "timeMax": "={{ $json.timeMax }}",
+        "timeMin": "={{ $json.timeMin }}"
+      },
+      "position": [
+        400,
+        0
+      ],
+      "type": "n8n-nodes-base.googleCalendar",
+      "typeVersion": 1.3
+    },
+    {
+      "id": "Slotsbbb-2222-4222-8222-222222222222",
+      "name": "Slots",
+      "parameters": {
+        "jsCode": "\nconst meta = $('Window').first().json;\nconst day = new Date(meta.timeMin);\nconst open  = new Date(day); open.setHours(meta.openHour, 0, 0, 0);\nconst close = new Date(day); close.setHours(meta.closeHour, 0, 0, 0);\n\nconst busy = $input.all()\n  .filter(i => i.json && i.json.start && i.json.start.dateTime)\n  .map(i => ({ s: new Date(i.json.start.dateTime), e: new Date(i.json.end.dateTime) }))\n  .sort((a, b) => a.s - b.s);\n\nconst fmt = t => t.toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' });\nconst slots = [];\nlet cursor = open;\nfor (const b of busy) {\n  if (b.s > cursor) {\n    const until = b.s < close ? b.s : close;\n    if (until - cursor >= 15 * 60000) slots.push(`${fmt(cursor)} to ${fmt(until)}`);\n  }\n  if (b.e > cursor) cursor = b.e;\n}\nif (cursor < close && close - cursor >= 15 * 60000) slots.push(`${fmt(cursor)} to ${fmt(close)}`);\n\nreturn [{ json: { day: meta.label, free: slots, count: slots.length,\n                  window: `${meta.openHour}:00-${meta.closeHour}:00` } }];\n"
+      },
+      "position": [
+        600,
+        0
+      ],
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2
+    }
+  ],
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "sourceWorkflowId": null,
+  "tags": [
+    "agent-tool"
+  ]
+}

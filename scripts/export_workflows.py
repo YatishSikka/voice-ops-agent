@@ -43,6 +43,16 @@ def main() -> int:
         return 0
 
     OUT_DIR.mkdir(parents=True, exist_ok=True)
+
+    # Prune first. Writing new files without removing old ones leaves deleted
+    # workflows in the repo, and the importer would faithfully recreate them on
+    # a fresh host -- resurrecting tools that were deliberately retired.
+    keep = {f"{slugify(w.name)}.json" for w in workflows}
+    for stale in OUT_DIR.glob("*.json"):
+        if stale.name not in keep:
+            stale.unlink()
+            print(f"  removed {stale.relative_to(ROOT)} (no longer in n8n)")
+
     for summary in workflows:
         # Refetch: the list response is incomplete (no description).
         raw = client._get(f"/workflows/{summary.id}")
