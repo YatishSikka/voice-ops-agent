@@ -1,7 +1,29 @@
 {
   "active": true,
   "connections": {
-    "Wait": {
+    "Executions": {
+      "main": [
+        [
+          {
+            "index": 0,
+            "node": "Workflows",
+            "type": "main"
+          }
+        ]
+      ]
+    },
+    "Month range": {
+      "main": [
+        [
+          {
+            "index": 0,
+            "node": "Executions",
+            "type": "main"
+          }
+        ]
+      ]
+    },
+    "Summarise": {
       "main": [
         [
           {
@@ -17,15 +39,26 @@
         [
           {
             "index": 0,
-            "node": "Wait",
+            "node": "Month range",
+            "type": "main"
+          }
+        ]
+      ]
+    },
+    "Workflows": {
+      "main": [
+        [
+          {
+            "index": 0,
+            "node": "Summarise",
             "type": "main"
           }
         ]
       ]
     }
   },
-  "description": "Generate the monthly usage report. Takes several minutes.",
-  "id": "ulvs3E8uQ7X5wPjv",
+  "description": "Report on automation activity for a month: how many workflow runs there were, how many failed, and which workflows were busiest.",
+  "id": "5drvYpomaeg2xM8F",
   "isArchived": false,
   "meta": null,
   "name": "Generate Monthly Report",
@@ -34,7 +67,7 @@
     {
       "id": "cccccccc-1111-4111-8111-111111111111",
       "name": "Webhook",
-      "notes": "{\n  \"description\": \"Generate the monthly usage report. Takes several minutes.\",\n  \"async\": true,\n  \"parameters\": {\n    \"type\": \"object\",\n    \"properties\": {\n      \"month\": {\n        \"type\": \"string\",\n        \"description\": \"Month, e.g. 'July'\"\n      }\n    },\n    \"required\": [\n      \"month\"\n    ]\n  }\n}",
+      "notes": "{\n  \"description\": \"Report on automation activity for a month: how many workflow runs there were, how many failed, and which workflows were busiest.\",\n  \"async\": true,\n  \"parameters\": {\n    \"type\": \"object\",\n    \"properties\": {\n      \"month\": {\n        \"type\": \"string\",\n        \"description\": \"The month to report on, as YYYY-MM. Work it out from what the user said, e.g. 'July' or 'last month'.\"\n      }\n    },\n    \"required\": [\n      \"month\"\n    ]\n  }\n}",
       "parameters": {
         "httpMethod": "POST",
         "options": {},
@@ -47,36 +80,100 @@
       ],
       "type": "n8n-nodes-base.webhook",
       "typeVersion": 2,
-      "webhookId": "7c32839f-bde6-4e6d-b926-46e67cc23c88"
+      "webhookId": "23febafc-5a92-4327-992c-b44cde83d9b4"
     },
     {
       "id": "cccccccc-2222-4222-8222-222222222222",
-      "name": "Wait",
+      "name": "Month range",
       "parameters": {
-        "amount": 5,
-        "unit": "seconds"
+        "jsCode": "\nconst body = $input.first().json.body || {};\nconst raw = String(body.month || '').trim();\nconst m = raw.match(/^(\\d{4})-(\\d{1,2})$/);\n\nconst now = new Date();\nconst year  = m ? Number(m[1]) : now.getFullYear();\nconst month = m ? Number(m[2]) - 1 : now.getMonth();\n\nconst start = new Date(year, month, 1);\nconst end = new Date(year, month + 1, 1);\nconst label = start.toLocaleDateString('en-GB', { month: 'long', year: 'numeric' });\n\nreturn [{ json: {\n  month: raw || label, label,\n  from: start.toISOString(), to: end.toISOString(),\n  taskId: body.__task_id, callbackUrl: body.__callback_url,\n} }];\n"
       },
       "position": [
-        220,
+        200,
         0
       ],
-      "type": "n8n-nodes-base.wait",
-      "typeVersion": 1.1,
-      "webhookId": "dddddddd-2222-4222-8222-222222222222"
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2
     },
     {
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "Icobfe14NVjl4B9x",
+          "name": "n8n API (self)"
+        }
+      },
       "id": "cccccccc-3333-4333-8333-333333333333",
+      "name": "Executions",
+      "parameters": {
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "options": {},
+        "queryParameters": {
+          "parameters": [
+            {
+              "name": "limit",
+              "value": "250"
+            }
+          ]
+        },
+        "sendQuery": true,
+        "url": "http://localhost:5678/api/v1/executions"
+      },
+      "position": [
+        400,
+        0
+      ],
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2
+    },
+    {
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "Icobfe14NVjl4B9x",
+          "name": "n8n API (self)"
+        }
+      },
+      "id": "cccccccc-4444-4444-8444-444444444444",
+      "name": "Workflows",
+      "parameters": {
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "options": {},
+        "url": "http://localhost:5678/api/v1/workflows"
+      },
+      "position": [
+        600,
+        0
+      ],
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2
+    },
+    {
+      "id": "cccccccc-5555-4555-8555-555555555555",
+      "name": "Summarise",
+      "parameters": {
+        "jsCode": "\nconst meta = $('Month range').first().json;\nconst from = new Date(meta.from), to = new Date(meta.to);\n\nconst executions = ($('Executions').first().json.data || [])\n  .filter(e => { const t = new Date(e.startedAt); return t >= from && t < to; });\n\nconst names = {};\nfor (const w of ($('Workflows').first().json.data || [])) names[w.id] = w.name;\n\nconst failed = executions.filter(e => e.status !== 'success').length;\n\nconst perWorkflow = {};\nfor (const e of executions) {\n  const key = names[e.workflowId] || e.workflowId;\n  perWorkflow[key] = (perWorkflow[key] || 0) + 1;\n}\nconst busiest = Object.entries(perWorkflow).sort((a, b) => b[1] - a[1]).slice(0, 3);\n\nconst durations = executions\n  .filter(e => e.stoppedAt)\n  .map(e => (new Date(e.stoppedAt) - new Date(e.startedAt)) / 1000);\nconst avg = durations.length\n  ? (durations.reduce((a, b) => a + b, 0) / durations.length).toFixed(1)\n  : null;\n\nlet message;\nif (!executions.length) {\n  message = `No workflow runs recorded in ${meta.label}.`;\n} else {\n  const parts = [`${executions.length} workflow runs in ${meta.label}`];\n  parts.push(failed ? `${failed} failed` : 'none failed');\n  if (busiest.length) parts.push(`busiest was ${busiest[0][0]} with ${busiest[0][1]}`);\n  if (avg) parts.push(`averaging ${avg} seconds each`);\n  message = parts.join(', ') + '.';\n}\n\nreturn [{ json: { result: { message, month: meta.label, total: executions.length,\n                            failed, busiest, averageSeconds: avg },\n                  callbackUrl: meta.callbackUrl } }];\n"
+      },
+      "position": [
+        800,
+        0
+      ],
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2
+    },
+    {
+      "id": "cccccccc-6666-4666-8666-666666666666",
       "name": "Callback",
       "parameters": {
-        "jsonBody": "={{ JSON.stringify({ result: { message: \"Monthly report for \" + $('Webhook').item.json.body.month + \" is ready: 1,284 events across 37 workflows.\" } }) }}",
+        "jsonBody": "={{ JSON.stringify({ result: $json.result }) }}",
         "method": "POST",
         "options": {},
         "sendBody": true,
         "specifyBody": "json",
-        "url": "={{ $('Webhook').item.json.body.__callback_url }}"
+        "url": "={{ $json.callbackUrl }}"
       },
       "position": [
-        440,
+        1000,
         0
       ],
       "type": "n8n-nodes-base.httpRequest",

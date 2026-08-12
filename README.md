@@ -1,6 +1,7 @@
 # Voice-Ops Agent
 
-A voice agent whose capabilities are **discovered at runtime, not compiled in**.
+A voice agent you talk to on Telegram, whose capabilities are **discovered at
+runtime, not compiled in**.
 
 Every n8n workflow tagged `agent-tool` is fetched over the n8n REST API, its
 webhook input is translated into a JSON Schema, and the result is handed to the
@@ -12,26 +13,26 @@ agent hands a long-running job to n8n, ends the turn, and messages you on
 Telegram when it finishes — as a spoken voice note, so the interaction stays
 voice-first past the end of the conversation.
 
-> **Status.** Phases 0–5 work locally. Ask *"what's on my calendar tomorrow"*
-> out loud and the agent transcribes it, picks the n8n-backed tool, queries the
-> real Google Calendar API, and speaks the answer — with the tool list
-> discovered at runtime rather than compiled in. Slow jobs hand off and return
-> as a Telegram voice note, and destructive tools are confirmed before they
-> fire. Not yet done: hosting.
+> **Status.** Works end to end, locally. Send the bot a voice message asking
+> *"what's on my calendar on Thursday"* and it transcribes you, resolves the
+> date, queries the real Google Calendar, and replies with a spoken voice note.
+> Slow jobs hand off and report back later; destructive tools are confirmed
+> before they fire. Not yet done: hosting, and one of the three workflows is
+> still a stub.
 
 ---
 
 ## Architecture
 
 ```
-Browser mic (Gradio)
-        │  audio in
+Telegram voice message
+        │  long poll -- no inbound port, no public URL
         ▼
 ┌──────────────────────────────────────┐
-│  Voice loop  (app.py)                │
+│  bot.py                              │
 │    Groq whisper-large-v3-turbo  STT  │
 │    Groq llama-3.3-70b + tools  LLM   │
-│    Groq TTS / browser speech   TTS   │
+│    Groq Orpheus                TTS   │
 └───────────────┬──────────────────────┘
                 │ tool call
                 ▼
@@ -41,18 +42,26 @@ Browser mic (Gradio)
 │    filter tag == "agent-tool"        │
 │    webhook node → JSON Schema        │
 │    emit provider tool definitions    │
-│    cached 60s, refreshed per session │
+│    cached 60s, refreshed per turn    │
 └───────────────┬──────────────────────┘
                 │ POST webhook
                 ▼
 ┌──────────────────────────────────────┐
 │  n8n   (self-hosted, community)      │
-│    Gmail · Calendar · Notion · GitHub │
+│    Google Calendar · and whatever    │
+│    else you tag                      │
 └───────────────┬──────────────────────┘
-                │ on completion
+                │ on completion (background jobs)
                 ▼
-        Telegram bot   ← the async callback
+        voice note back to the same chat
 ```
+
+**Why Telegram and not a web page.** It is already on the phone, it records and
+plays voice natively, and `getUpdates` long polling means the bot reaches *out*
+to Telegram — no inbound port, no public URL, no tunnel, and no hosting tier
+that has to permit web apps. That last point is not incidental: Hugging Face
+made Gradio Spaces paid mid-build, and this design makes the question moot.
+
 
 `tools/registry.py` and `tools/schema.py` are the project. Everything else is
 plumbing around them.
@@ -69,11 +78,19 @@ and `tool_result_message()` alongside `chat()`, which keeps the agent loop
 vendor-neutral and makes `LLM_PROVIDER` a one-line swap.
 
 **TTS separates permanent failure from temporary.** Groq's speech models are
-preview-status and terms-gated. A 403 or 404 will still be true next turn, so
-the engine degrades to browser `speechSynthesis` for the life of the process and
-logs once; a 429 degrades for that turn only. `synthesize()` never raises — an
-agent that goes silent is a worse outcome than one that speaks through the
-browser.
+terms-gated and were once decommissioned mid-build. A 403 or 404 will still be
+true next turn, so the engine degrades for the life of the process and logs
+once; a 429 degrades for that turn only. `synthesize()` never raises, and the
+bot sends text when there is no audio — an agent that goes silent is worse than
+one that writes.
+
+**Dates are resolved by the model, not parsed by the workflow.** The tool takes
+`YYYY-MM-DD` and the system prompt carries a small table of real dates —
+today, tomorrow, day after tomorrow, and the coming week by weekday name. The
+first version let the workflow match on words, which turned "Thursday" into
+today and "day after tomorrow" into tomorrow. The second version gave the model
+only today's date, and it still got "day after tomorrow" wrong about half the
+time. Listing the dates turns arithmetic into lookup.
 
 **Latency is instrumented from the first commit.** A p95 cannot be retrofitted.
 Every network hop records a span in `agent/timing.py`, and the eval harness
@@ -87,10 +104,9 @@ The whole system runs at **$0**.
 |---|---|---|
 | STT | Groq `whisper-large-v3-turbo` | 2,000 req/day, 28,800 audio-sec/day |
 | LLM | Groq `llama-3.3-70b-versatile` | ~30 RPM, 1,000 RPD, 12K TPM |
-| TTS | Groq TTS → browser `speechSynthesis` fallback | preview-gated |
+| TTS | Groq Orpheus → text fallback | terms-gated, one-time accept |
 | Orchestration | n8n community edition, self-hosted | unlimited |
-| Hosting | Render free web service | spins down when idle, ~1 min cold start |
-| Callback | Telegram Bot API | unlimited |
+| Interface | Telegram Bot API | unlimited, no inbound port needed |
 | Tracing | Langfuse Cloud | 50K observations/mo |
 
 The app needs no GPU of its own: every model call goes to Groq over HTTP, so
@@ -104,8 +120,13 @@ cd voice-ops-agent
 pip install -r requirements.txt
 
 cp .env.example .env      # then fill it in
-python scripts/preflight.py
+python scripts/preflight.py     # gate checks
+python scripts/check_telegram.py  # verifies the bot, finds your chat id
+python bot.py                   # start talking to it
 ```
+
+Then send the bot a voice message. `/tools` lists what it can currently do —
+including any workflow it skipped and why.
 
 ### Running n8n
 
@@ -141,7 +162,7 @@ design, so it verifies all three and prints a pass/fail table:
 |---|---|---|
 | Hugging Face | Token valid, email verified, account >30 days | Kept as a gate because the account checks still gate ZeroGPU; hosting itself has since moved off Spaces (see Limitations) |
 | n8n | `GET /api/v1/workflows` answers, and tag filtering works | The registry has nothing to read — switch to self-hosted `npx n8n` immediately |
-| Groq | STT, LLM **and** TTS each accept a real call | A listed model is not a callable one; a gated TTS drops to the browser fallback |
+| Groq | STT, LLM **and** TTS each accept a real call | A listed model is not a callable one; a gated TTS drops to text |
 
 It exits non-zero on failure and takes `--json` for CI. A `SKIP` is not a pass —
 an unverified gate is an unresolved one.
@@ -212,13 +233,16 @@ the model a tool that cannot work.
 | Phase | Deliverable | Status |
 |---|---|---|
 | 0 | Preflight gate checks | **Done** — all gates green |
-| 1 | Voice loop: mic → STT → TTS | **Works locally**; hosting pending |
+| 1 | Voice loop: speech in, speech out | **Done** |
 | 2 | **Tool registry** — n8n workflows as runtime-discovered tools | **Works locally** — end to end, voice to n8n and back |
-| 3 | Async callback — long jobs return via Telegram voice note | **Done** — verified end to end against live Telegram |
+| 3 | Async handoff — long jobs report back later | **Done** — verified against live Telegram |
 | 4 | Confirmation gate; first real integration | **Done** — Google Calendar is live via OAuth |
-| 5 | Eval harness, Langfuse tracing, CI, measured latency table | Pending |
+| 5 | Eval harness, CI, measured latency table | **Done** (Langfuse skipped) |
 
-The tool list freezes at the end of Phase 4. That is the scope-creep guard.
+| 6 | Telegram as the interface, replacing the web UI | **Done** |
+
+The Gradio app in `app.py` still runs (`python app.py`) and is useful for
+debugging a turn without a phone, but Telegram is the product.
 
 ## Eval scorecard
 

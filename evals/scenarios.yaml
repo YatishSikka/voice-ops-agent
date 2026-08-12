@@ -50,10 +50,12 @@
   expect_tools: [get_calendar_events]
   max_reply_chars: 220
 
+# The month argument is resolved by the model to YYYY-MM, so it is not
+# asserted literally here -- what matters is that the agent hands off rather
+# than pretending to have an answer.
 - id: report_async
   say: generate the monthly report for July
   expect_tools: [generate_monthly_report]
-  expect_args: {month: July}
   must_mention: [message, "let you know", "notify", "when it", "get back"]
   match: any
   audio: true
