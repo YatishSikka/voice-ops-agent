@@ -31,8 +31,11 @@ from config import config
 
 WORKFLOW_DIR = ROOT / "n8n" / "workflows"
 
-# Fields n8n rejects or regenerates on create.
+# Fields n8n rejects or regenerates on create. The public API's create schema
+# allows no extras, so even `description` is refused here and set by a later
+# update instead.
 STRIP = {"id", "active", "tags", "createdAt", "updatedAt", "versionId", "shared",
+         "description", "sourceWorkflowId",
          "isArchived", "meta", "nodeGroups", "staticData", "pinData",
          "triggerCount", "versionCounter", "activeVersion", "activeVersionId"}
 
