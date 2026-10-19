@@ -3,6 +3,8 @@
 
 gradio>=6.0,<7            # HF Space SDK (Docker/standard Gradio Spaces need PRO)
 openai>=1.40              # used against Groq's OpenAI-compatible endpoint
+fastapi>=0.115            # n8n's completion callback (callback_api.py)
+uvicorn>=0.30             # serves that callback inside bot.py
 httpx>=0.27               # n8n REST + Telegram; also the preflight transport
 python-dotenv>=1.0
 pydantic>=2.7             # tool-schema models in tools/schema.py
