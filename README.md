@@ -38,7 +38,7 @@ Telegram voice message
 ┌──────────────────────────────────────┐
 │  bot.py                              │
 │    Groq whisper-large-v3-turbo  STT  │
-│    Groq llama-3.3-70b + tools  LLM   │
+│    Groq gpt-oss-120b  + tools  LLM   │
 │    Groq Orpheus                TTS   │
 └───────────────┬──────────────────────┘
                 │ tool call
@@ -106,7 +106,7 @@ The whole system runs at **$0**.
 | Hop | Service | Free allowance |
 |---|---|---|
 | STT | Groq `whisper-large-v3-turbo` | 2,000 req/day, 28,800 audio-sec/day |
-| LLM | Groq `llama-3.3-70b-versatile` | ~30 RPM, 1,000 RPD, 12K TPM, **100K tokens/day** |
+| LLM | Groq `openai/gpt-oss-120b` | per-model free-tier limits, shown in the Groq console |
 | TTS | Groq Orpheus → text fallback | terms-gated, one-time accept |
 | Orchestration | n8n community edition, self-hosted | unlimited |
 | Interface | Telegram Bot API | unlimited, no inbound port needed |

@@ -70,7 +70,7 @@ class Config:
             anthropic_api_key=_env("ANTHROPIC_API_KEY"),
             anthropic_model=_env("ANTHROPIC_MODEL", "claude-sonnet-5"),
             stt_model=_env("STT_MODEL", "whisper-large-v3-turbo"),
-            llm_model=_env("LLM_MODEL", "llama-3.3-70b-versatile"),
+            llm_model=_env("LLM_MODEL", "openai/gpt-oss-120b"),
             # playai-tts was decommissioned; Orpheus is the current Groq TTS and
             # needs one-time terms acceptance in the console before it answers.
             tts_model=_env("TTS_MODEL", "canopylabs/orpheus-v1-english"),
