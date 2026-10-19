@@ -126,7 +126,8 @@ Base setup is done. Three things left, in order:
 1. Wait for n8n, then create its API key.
      journalctl -u n8n -f          # wait for "Editor is now accessible"
    From your own laptop, tunnel in -- do not open 5678 to the internet:
-     gcloud compute ssh $(hostname) -- -L 5678:localhost:5678
+     ssh -L 5678:localhost:5678 $SERVICE_USER@<this VM's public IP>
+     (on Google Cloud: gcloud compute ssh $(hostname) -- -L 5678:localhost:5678)
    Then open http://localhost:5678, create the owner account, and go to
    Settings -> n8n API -> Create an API key.
 
